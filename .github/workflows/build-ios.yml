@@ -22,8 +22,15 @@ jobs:
       - name: Build unsigned iOS IPA
         run: flutter build ios --release --no-codesign
 
+      - name: Create IPA
+        run: |
+          mkdir -p Payload
+          cp -r build/ios/iphoneos/Runner.app Payload/
+          zip -r gigscourt-unsigned.ipa Payload
+          rm -rf Payload
+
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
           name: gigscourt-unsigned-ios
-          path: build/ios/iphoneos/Runner.app
+          path: gigscourt-unsigned.ipa
