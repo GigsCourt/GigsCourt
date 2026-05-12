@@ -9,7 +9,6 @@ class ImageService {
 
   final ImagePicker _picker = ImagePicker();
 
-  // Pick from gallery
   Future<File?> pickFromGallery() async {
     final xFile = await _picker.pickImage(
       source: ImageSource.gallery,
@@ -19,7 +18,6 @@ class ImageService {
     return xFile != null ? File(xFile.path) : null;
   }
 
-  // Take photo with camera
   Future<File?> takePhoto() async {
     final xFile = await _picker.pickImage(
       source: ImageSource.camera,
@@ -29,10 +27,8 @@ class ImageService {
     return xFile != null ? File(xFile.path) : null;
   }
 
-  // Upload to ImageKit via our Supabase Edge Function
   Future<ImageKitUploadResult> uploadToImageKit(File file, String userId) async {
     try {
-      // Get auth params from our edge function
       final authResponse = await http.get(
         Uri.parse('https://ohysatmlieiatzwqwjyt.supabase.co/functions/v1/imagekit-auth'),
         headers: {
@@ -45,15 +41,14 @@ class ImageService {
       }
 
       final authData = jsonDecode(authResponse.body);
-      final token = authData['token'];
-      final expire = authData['expire'].toString();
-      final signature = authData['signature'];
+      final token = authData['token'] as String;
+      final expire = authData['expire'] as int;
+      final signature = authData['signature'] as String;
 
-      // Upload file to ImageKit
       final request = http.MultipartRequest('POST', Uri.parse(_uploadUrl));
       request.fields['publicKey'] = _publicKey;
       request.fields['token'] = token;
-      request.fields['expire'] = expire;
+      request.fields['expire'] = expire.toString();
       request.fields['signature'] = signature;
       request.fields['fileName'] = '${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
       request.fields['folder'] = '/profile_photos';
