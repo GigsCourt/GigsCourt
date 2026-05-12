@@ -4,6 +4,7 @@ import 'firebase_options.dart';
 import 'theme/app_theme.dart';
 import 'screens/splash_screen.dart';
 import 'screens/onboarding_screen.dart';
+import 'screens/auth_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,6 +26,7 @@ class GigsCourtApp extends StatelessWidget {
       home: const SplashScreen(),
       routes: {
         '/onboarding': (context) => const OnboardingScreen(),
+        '/auth': (context) => const AuthScreen(),
       },
     );
   }
