@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -24,11 +26,41 @@ class _SplashScreenState extends State<SplashScreen>
       CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
     );
 
-    Future.delayed(const Duration(milliseconds: 2500), () {
-      if (mounted) {
-        Navigator.pushReplacementNamed(context, '/onboarding');
+    Future.delayed(const Duration(milliseconds: 2500), _checkAuthAndNavigate);
+  }
+
+  Future<void> _checkAuthAndNavigate() async {
+    if (!mounted) return;
+
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      // Not logged in
+      _navigateTo('/onboarding');
+      return;
+    }
+
+    // Check if profile exists in Firestore
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('profiles')
+          .doc(user.uid)
+          .get();
+
+      if (doc.exists) {
+        _navigateTo('/home');
+      } else {
+        _navigateTo('/profile-setup');
       }
-    });
+    } catch (e) {
+      // On error, go to profile setup to be safe
+      _navigateTo('/profile-setup');
+    }
+  }
+
+  void _navigateTo(String route) {
+    if (!mounted) return;
+    Navigator.pushReplacementNamed(context, route);
   }
 
   @override
