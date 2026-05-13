@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 
 class AdminScreen extends StatefulWidget {
@@ -12,7 +13,6 @@ class AdminScreen extends StatefulWidget {
 
 class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
   void initState() {
@@ -51,7 +51,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [
+        children: const [
           _DashboardTab(),
           _UsersTab(),
           _ServicesTab(),
@@ -66,6 +66,8 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
 
 // -- Dashboard Tab --
 class _DashboardTab extends StatefulWidget {
+  const _DashboardTab();
+
   @override
   State<_DashboardTab> createState() => _DashboardTabState();
 }
@@ -73,7 +75,6 @@ class _DashboardTab extends StatefulWidget {
 class _DashboardTabState extends State<_DashboardTab> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   int _totalUsers = 0;
-  int _activeToday = 0;
   int _totalGigs = 0;
   int _revenue = 0;
   int _completedGigs = 0;
@@ -172,6 +173,8 @@ class _DashboardTabState extends State<_DashboardTab> {
 
 // -- Users Tab --
 class _UsersTab extends StatefulWidget {
+  const _UsersTab();
+
   @override
   State<_UsersTab> createState() => _UsersTabState();
 }
@@ -187,6 +190,12 @@ class _UsersTabState extends State<_UsersTab> {
   void initState() {
     super.initState();
     _loadUsers();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadUsers() async {
@@ -252,7 +261,6 @@ class _UsersTabState extends State<_UsersTab> {
                   itemBuilder: (context, index) {
                     final u = filtered[index];
                     final name = u['name'] ?? 'Unknown';
-                    final email = u['uid'] ?? '';
                     final gigs = (u['gigCount'] ?? 0).toInt();
                     final credits = (u['credits'] ?? 0).toInt();
                     return ListTile(
@@ -273,12 +281,14 @@ class _UsersTabState extends State<_UsersTab> {
 
 // -- Services Tab --
 class _ServicesTab extends StatefulWidget {
+  const _ServicesTab();
+
   @override
   State<_ServicesTab> createState() => _ServicesTabState();
 }
 
 class _ServicesTabState extends State<_ServicesTab> {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final SupabaseClient _supabase = Supabase.instance.client;
   List<Map<String, dynamic>> _services = [];
   List<Map<String, dynamic>> _suggestions = [];
   bool _isLoading = true;
@@ -291,12 +301,12 @@ class _ServicesTabState extends State<_ServicesTab> {
 
   Future<void> _loadData() async {
     try {
-      final services = await _firestore.collection('services').orderBy('name').get();
-      final suggestions = await _firestore.collection('service_suggestions').where('status', isEqualTo: 'pending').get();
+      final services = await _supabase.from('services').select('*').order('name');
+      final suggestions = await _supabase.from('service_suggestions').select('*').eq('status', 'pending');
       if (mounted) {
         setState(() {
-          _services = services.docs.map((d) => d.data()..['id'] = d.id).toList();
-          _suggestions = suggestions.docs.map((d) => d.data()..['id'] = d.id).toList();
+          _services = List<Map<String, dynamic>>.from(services);
+          _suggestions = List<Map<String, dynamic>>.from(suggestions);
           _isLoading = false;
         });
       }
@@ -329,7 +339,7 @@ class _ServicesTabState extends State<_ServicesTab> {
 
     if (result != null && result['name']!.isNotEmpty) {
       final slug = result['name']!.toLowerCase().replaceAll(' ', '-');
-      await _firestore.collection('services').add({
+      await _supabase.from('services').insert({
         'name': result['name'], 'slug': slug, 'category': result['category'], 'active': true,
       });
       _loadData();
@@ -338,17 +348,40 @@ class _ServicesTabState extends State<_ServicesTab> {
 
   Future<void> _approveSuggestion(Map<String, dynamic> suggestion) async {
     final slug = (suggestion['name'] as String).toLowerCase().replaceAll(' ', '-');
-    await _firestore.collection('services').add({
+    await _supabase.from('services').insert({
       'name': suggestion['name'], 'slug': slug, 'category': suggestion['category'] ?? '', 'active': true,
     });
-    await _firestore.collection('service_suggestions').doc(suggestion['id']).update({'status': 'approved'});
+    await _supabase.from('service_suggestions').update({'status': 'approved'}).eq('id', suggestion['id']);
+    _loadData();
+  }
+
+  Future<void> _rejectSuggestion(Map<String, dynamic> suggestion) async {
+    await _supabase.from('service_suggestions').update({'status': 'rejected'}).eq('id', suggestion['id']);
     _loadData();
   }
 
   Future<void> _toggleService(Map<String, dynamic> service) async {
     final active = service['active'] ?? true;
-    await _firestore.collection('services').doc(service['id']).update({'active': !active});
+    await _supabase.from('services').update({'active': !active}).eq('id', service['id']);
     _loadData();
+  }
+
+  Future<void> _deleteService(Map<String, dynamic> service) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Service'),
+        content: Text('Delete "${service['name']}" from the catalog?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      await _supabase.from('services').delete().eq('id', service['id']);
+      _loadData();
+    }
   }
 
   @override
@@ -372,22 +405,21 @@ class _ServicesTabState extends State<_ServicesTab> {
                 subtitle: Text(s['category'] ?? '', style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
                 trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                   Text(s['active'] == true ? 'Active' : 'Inactive', style: TextStyle(fontSize: 11, color: s['active'] == true ? const Color(0xFF4CAF50) : const Color(0xFF6B7280))),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 4),
                   IconButton(icon: Icon(s['active'] == true ? Icons.toggle_on : Icons.toggle_off, color: s['active'] == true ? const Color(0xFF4CAF50) : const Color(0xFF6B7280)), onPressed: () => _toggleService(s)),
+                  IconButton(icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20), onPressed: () => _deleteService(s)),
                 ]),
               )),
           if (_suggestions.isNotEmpty) ...[
             const SizedBox(height: 20),
-            Text('Service Suggestions', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Theme.of(context).textTheme.bodyLarge?.color)),
+            Text('Suggestions', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Theme.of(context).textTheme.bodyLarge?.color)),
             const SizedBox(height: 8),
             ..._suggestions.map((s) => ListTile(
                   title: Text(s['name'] ?? '', style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color)),
+                  subtitle: Text(s['category'] ?? '', style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
                   trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                     IconButton(icon: const Icon(Icons.check, color: Color(0xFF4CAF50)), onPressed: () => _approveSuggestion(s)),
-                    IconButton(icon: const Icon(Icons.close, color: Colors.red), onPressed: () async {
-                      await _firestore.collection('service_suggestions').doc(s['id']).update({'status': 'rejected'});
-                      _loadData();
-                    }),
+                    IconButton(icon: const Icon(Icons.close, color: Colors.red), onPressed: () => _rejectSuggestion(s)),
                   ]),
                 )),
           ],
@@ -399,6 +431,8 @@ class _ServicesTabState extends State<_ServicesTab> {
 
 // -- Revenue Tab --
 class _RevenueTab extends StatefulWidget {
+  const _RevenueTab();
+
   @override
   State<_RevenueTab> createState() => _RevenueTabState();
 }
@@ -443,7 +477,7 @@ class _RevenueTabState extends State<_RevenueTab> {
   int _revenueForPeriod(DateTime start, DateTime end) {
     return _purchases.where((p) {
       final date = (p['createdAt'] as Timestamp?)?.toDate();
-      return date != null && date.isAfter(start) && date.isBefore(end.add(const Duration(days: 1)));
+      return date != null && !date.isBefore(start) && date.isBefore(end.add(const Duration(days: 1)));
     }).fold<int>(0, (sum, p) => sum + (p['amount'] ?? 0).toInt());
   }
 
@@ -489,7 +523,7 @@ class _RevenueTabState extends State<_RevenueTab> {
 
   Widget _buildYearTile(int year, Map<int, int> months) {
     final total = months.values.fold<int>(0, (a, b) => a + b);
-    final monthNames = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const monthNames = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     final sortedMonths = months.keys.toList()..sort();
 
     return Card(
@@ -508,6 +542,8 @@ class _RevenueTabState extends State<_RevenueTab> {
 
 // -- Providers Tab --
 class _ProvidersTab extends StatefulWidget {
+  const _ProvidersTab();
+
   @override
   State<_ProvidersTab> createState() => _ProvidersTabState();
 }
@@ -546,12 +582,9 @@ class _ProvidersTabState extends State<_ProvidersTab> {
       itemBuilder: (context, index) {
         final p = _providers[index];
         return ListTile(
-          leading: CircleAvatar(
-            backgroundImage: NetworkImage(p['photoUrl'] ?? ''),
-            child: const Icon(Icons.person),
-          ),
+          leading: CircleAvatar(backgroundImage: NetworkImage(p['photoUrl'] ?? ''), child: const Icon(Icons.person)),
           title: Text('${index + 1}. ${p['name'] ?? ''}', style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color)),
-          subtitle: Text('${p['gigCount'] ?? 0} gigs · ${p['rating']?.toStringAsFixed(1) ?? '0.0'}★', style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
+          subtitle: Text('${p['gigCount'] ?? 0} gigs · ${(p['rating'] ?? 0.0).toStringAsFixed(1)}★', style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
         );
       },
     );
@@ -560,6 +593,8 @@ class _ProvidersTabState extends State<_ProvidersTab> {
 
 // -- Issues Tab --
 class _IssuesTab extends StatefulWidget {
+  const _IssuesTab();
+
   @override
   State<_IssuesTab> createState() => _IssuesTabState();
 }
@@ -587,6 +622,12 @@ class _IssuesTabState extends State<_IssuesTab> {
     _loadIssues();
   }
 
+  @override
+  void dispose() {
+    _responseController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadIssues() async {
     try {
       final snapshot = await _firestore.collection('reported_issues').orderBy('createdAt', descending: true).get();
@@ -603,7 +644,7 @@ class _IssuesTabState extends State<_IssuesTab> {
 
   Future<void> _resolve(String id, String response) async {
     await _firestore.collection('reported_issues').doc(id).update({'status': 'resolved', 'response': response});
-    _loadData();
+    _loadIssues();
   }
 
   void _showResponseDialog(Map<String, dynamic> issue) {
@@ -624,9 +665,7 @@ class _IssuesTabState extends State<_IssuesTab> {
                 spacing: 6,
                 children: _presetResponses.map((pr) => ActionChip(
                   label: Text(pr, style: const TextStyle(fontSize: 11)),
-                  onPressed: () {
-                    _responseController.text = pr;
-                  },
+                  onPressed: () => _responseController.text = pr,
                 )).toList(),
               ),
             ],
