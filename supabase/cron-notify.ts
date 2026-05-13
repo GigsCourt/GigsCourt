@@ -92,74 +92,23 @@ serve(async (req) => {
   }
 
   try {
-    const { type } = await req.json();
     const profiles = await queryFirestore("profiles");
-    const now = new Date();
-    const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
-
-    let sent = 0;
-
-    for (const profile of profiles) {
-      const profileId = profile.id;
-      if (!profileId) continue;
-
-      switch (type) {
-        case "inactive_users": {
-          const updatedAt = profile.updatedAt ? new Date(profile.updatedAt) : null;
-          if (updatedAt && updatedAt < threeDaysAgo) {
-            await callSendPush(profileId, "We miss you!", "Discover new providers near you on GigsCourt", { screen: "home" });
-            sent++;
-          }
-          break;
-        }
-
-        case "provider_inactive_7d": {
-          const services = Array.isArray(profile.services) ? profile.services : [];
-          const gigCount7Days = parseInt(profile.gigCount7Days || "0");
-          if (services.length > 0 && gigCount7Days === 0) {
-            await callSendPush(profileId, "No gigs this week", "You haven't completed a gig this week. Update your services to attract more clients.", { screen: "edit_services" });
-            sent++;
-          }
-          break;
-        }
-
-        case "low_credits": {
-          const services = Array.isArray(profile.services) ? profile.services : [];
-          const credits = parseInt(profile.credits || "0");
-          if (services.length > 0 && credits <= 1) {
-            await callSendPush(profileId, "Low credits", `You have ${credits} credit${credits === 1 ? "" : "s"} left. Buy more credits to register gigs and get reviewed.`, { screen: "credits" });
-            sent++;
-          }
-          break;
-        }
-
-        case "boost_reputation": {
-          const lastGigAt = profile.lastGigCompletedAt ? new Date(profile.lastGigCompletedAt) : null;
-          const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-          if (lastGigAt && lastGigAt > yesterday) {
-            await callSendPush(profileId, "Keep it up!", "Great work! You completed a gig today, keep it up to get more clients. This will boost your reputation.", { screen: "profile" });
-            sent++;
-          }
-          break;
-        }
-
-        case "profile_incomplete": {
-          const hasPhoto = !!profile.photoUrl;
-          const hasAddress = !!profile.workspaceAddress;
-          if (!hasPhoto || !hasAddress) {
-            await callSendPush(profileId, "Complete your profile", "Complete your profile to get discovered by more clients.", { screen: "edit_profile" });
-            sent++;
-          }
-          break;
-        }
-      }
+    
+    // Return first profile to debug field parsing
+    if (profiles.length > 0) {
+      return new Response(JSON.stringify({ 
+        success: true, 
+        count: profiles.length,
+        firstProfile: profiles[0]
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    return new Response(JSON.stringify({ success: true, type, sent }), {
+    return new Response(JSON.stringify({ success: true, count: 0 }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
-    console.error("Error:", error);
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
