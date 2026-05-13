@@ -114,7 +114,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       PushService().sendWelcome(user.uid);
 
       if (mounted) {
-        Navigator.pushReplacementNamed(context, '/home');
+        Navigator.pushReplacementNamed(context, '/main');
       }
     } catch (e) {
       if (mounted) {
