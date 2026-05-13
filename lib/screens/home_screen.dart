@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:latlong2/latlong.dart';
+import 'notifications_screen.dart';
 import '../services/auth_service.dart';
 import '../services/location_service.dart';
 import '../services/home_service.dart';
@@ -390,7 +391,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         IconButton(
           onPressed: () {
             HapticFeedback.lightImpact();
-            // TODO: Navigate to NotificationsScreen
+            Navigator.of(context, rootNavigator: true).push(
+              MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+            );
           },
           icon: const Icon(Icons.notifications_outlined),
         ),
