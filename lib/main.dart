@@ -40,6 +40,15 @@ class GigsCourtApp extends StatelessWidget {
       themeMode: ThemeMode.system,
       darkTheme: AppTheme.darkTheme,
       theme: AppTheme.lightTheme,
+      builder: (context, child) {
+        return GestureDetector(
+          onTap: () {
+            FocusScope.of(context).unfocus();
+          },
+          behavior: HitTestBehavior.translucent,
+          child: child!,
+        );
+      },
       home: const SplashScreen(),
       routes: {
         '/onboarding': (context) => const OnboardingScreen(),
