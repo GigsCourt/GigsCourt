@@ -229,9 +229,9 @@ class _ProfileSetupStep3State extends State<ProfileSetupStep3> {
               ],
             ),
           ),
-        // Map — only renders after location is resolved
+        // Map — takes up most of the screen
         Expanded(
-          flex: 3,
+          flex: 5,
           child: _isLoadingLocation
               ? Container(
                   color: Theme.of(context).scaffoldBackgroundColor,
@@ -283,9 +283,9 @@ class _ProfileSetupStep3State extends State<ProfileSetupStep3> {
                   ],
                 ),
         ),
-        // Address field
+        // Address field — compact below map
         Expanded(
-          flex: 2,
+          flex: 1,
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -304,7 +304,7 @@ class _ProfileSetupStep3State extends State<ProfileSetupStep3> {
                 TextFormField(
                   controller: _addressController,
                   onChanged: (_) => _notifyParent(),
-                  maxLines: 3,
+                  maxLines: 2,
                   decoration: const InputDecoration(
                     hintText: 'Your workspace address or description...',
                     alignLabelWithHint: true,
