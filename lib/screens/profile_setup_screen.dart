@@ -71,29 +71,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         photoFileId = result.fileId;
       }
 
-      // Save to Firestore
-      await _firestore.collection('profiles').doc(user.uid).set({
-        'name': _name,
-        'phone': _phone,
-        'bio': _bio,
-        'photoUrl': photoUrl ?? '',
-        'photoFileId': photoFileId ?? '',
-        'services': _selectedServices,
-        'workspaceAddress': _workspaceAddress,
-        'workspaceLat': _workspaceLocation.latitude,
-        'workspaceLng': _workspaceLocation.longitude,
-        'rating': 0.0,
-        'reviewCount': 0,
-        'gigCount': 0,
-        'gigCount7Days': 0,
-        'gigCount30Days': 0,
-        'credits': 0,
-        'showPhone': true,
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-
-      // Save to Supabase (location + services)
+      // Write Supabase FIRST (guarantees location is set before Firestore)
       await _supabase.from('profiles').upsert({
         'id': user.uid,
         'workspace_location':
@@ -102,6 +80,34 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         'services': _selectedServices,
         'updated_at': DateTime.now().toIso8601String(),
       });
+
+      // Write Firestore second — with rollback if it fails
+      try {
+        await _firestore.collection('profiles').doc(user.uid).set({
+          'name': _name,
+          'phone': _phone,
+          'bio': _bio,
+          'photoUrl': photoUrl ?? '',
+          'photoFileId': photoFileId ?? '',
+          'services': _selectedServices,
+          'workspaceAddress': _workspaceAddress,
+          'workspaceLat': _workspaceLocation.latitude,
+          'workspaceLng': _workspaceLocation.longitude,
+          'rating': 0.0,
+          'reviewCount': 0,
+          'gigCount': 0,
+          'gigCount7Days': 0,
+          'gigCount30Days': 0,
+          'credits': 0,
+          'showPhone': true,
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      } catch (firestoreError) {
+        // Roll back Supabase so user can retry
+        await _supabase.from('profiles').delete().eq('id', user.uid);
+        rethrow;
+      }
 
       if (mounted) {
         Navigator.pushReplacementNamed(context, '/home');
