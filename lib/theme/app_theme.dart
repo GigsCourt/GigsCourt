@@ -62,6 +62,7 @@ class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: cardDark,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
         ),
@@ -69,6 +70,9 @@ class AppTheme {
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: royalBlue),
         ),
+        labelStyle: const TextStyle(fontSize: 13, color: textSecondary),
+        hintStyle: const TextStyle(fontSize: 13, color: textSecondary),
+        floatingLabelStyle: const TextStyle(fontSize: 13, color: royalBlue),
       ),
     );
   }
@@ -113,6 +117,7 @@ class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: cardLight,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
         ),
@@ -120,6 +125,9 @@ class AppTheme {
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: royalBlue),
         ),
+        labelStyle: const TextStyle(fontSize: 13, color: textSecondary),
+        hintStyle: const TextStyle(fontSize: 13, color: textSecondary),
+        floatingLabelStyle: const TextStyle(fontSize: 13, color: royalBlue),
       ),
     );
   }
