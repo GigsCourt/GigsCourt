@@ -63,15 +63,14 @@ async function getAccessToken(): Promise<string> {
   return data.access_token;
 }
 
-async function queryFirestore(collection: string, filters?: Record<string, any>): Promise<any[]> {
+async function queryFirestore(collection: string): Promise<any[]> {
   const accessToken = await getAccessToken();
   const projectId = Deno.env.get("FIREBASE_PROJECT_ID")!;
   
-  let url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${collection}`;
-  
-  const response = await fetch(url, {
-    headers: { "Authorization": `Bearer ${accessToken}` },
-  });
+  const response = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${collection}`,
+    { headers: { "Authorization": `Bearer ${accessToken}` } }
+  );
 
   const data = await response.json();
   if (!data.documents) return [];
@@ -80,7 +79,8 @@ async function queryFirestore(collection: string, filters?: Record<string, any>)
     const fields = doc.fields || {};
     const result: any = { id: doc.name.split("/").pop() };
     for (const [key, value] of Object.entries(fields)) {
-      result[key] = value.stringValue || value.integerValue || value.doubleValue || value.booleanValue || null;
+      const v = value as any;
+      result[key] = v.stringValue ?? v.integerValue ?? v.doubleValue ?? v.booleanValue ?? v.timestampValue ?? null;
     }
     return result;
   });
@@ -100,46 +100,58 @@ serve(async (req) => {
     let sent = 0;
 
     for (const profile of profiles) {
+      const profileId = profile.id;
+      if (!profileId) continue;
+
       switch (type) {
-        case "inactive_users":
+        case "inactive_users": {
           const updatedAt = profile.updatedAt ? new Date(profile.updatedAt) : null;
           if (updatedAt && updatedAt < threeDaysAgo) {
-            await callSendPush(profile.id, "We miss you!", "Discover new providers near you on GigsCourt", { screen: "home" });
+            await callSendPush(profileId, "We miss you!", "Discover new providers near you on GigsCourt", { screen: "home" });
             sent++;
           }
           break;
+        }
 
-        case "provider_inactive_7d":
-          if (profile.services && profile.services.length > 0 && parseInt(profile.gigCount7Days || "0") === 0) {
-            await callSendPush(profile.id, "No gigs this week", "You haven't completed a gig this week. Update your services to attract more clients.", { screen: "edit_services" });
+        case "provider_inactive_7d": {
+          const services = Array.isArray(profile.services) ? profile.services : [];
+          const gigCount7Days = parseInt(profile.gigCount7Days || "0");
+          if (services.length > 0 && gigCount7Days === 0) {
+            await callSendPush(profileId, "No gigs this week", "You haven't completed a gig this week. Update your services to attract more clients.", { screen: "edit_services" });
             sent++;
           }
           break;
+        }
 
-        case "low_credits":
+        case "low_credits": {
+          const services = Array.isArray(profile.services) ? profile.services : [];
           const credits = parseInt(profile.credits || "0");
-          if (profile.services && profile.services.length > 0 && credits <= 1) {
-            await callSendPush(profile.id, "Low credits", `You have ${credits} credit${credits === 1 ? "" : "s"} left. Buy more credits to register gigs and get reviewed.`, { screen: "credits" });
+          if (services.length > 0 && credits <= 1) {
+            await callSendPush(profileId, "Low credits", `You have ${credits} credit${credits === 1 ? "" : "s"} left. Buy more credits to register gigs and get reviewed.`, { screen: "credits" });
             sent++;
           }
           break;
+        }
 
-        case "boost_reputation":
-          // Uses lastGigCompletedAt (future field, skip for now if not set)
+        case "boost_reputation": {
           const lastGigAt = profile.lastGigCompletedAt ? new Date(profile.lastGigCompletedAt) : null;
           const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
           if (lastGigAt && lastGigAt > yesterday) {
-            await callSendPush(profile.id, "Keep it up!", "Great work! You completed a gig today, keep it up to get more clients. This will boost your reputation.", { screen: "profile" });
+            await callSendPush(profileId, "Keep it up!", "Great work! You completed a gig today, keep it up to get more clients. This will boost your reputation.", { screen: "profile" });
             sent++;
           }
           break;
+        }
 
-        case "profile_incomplete":
-          if (!profile.photoUrl || !profile.workspaceAddress || !profile.workPhotos || (Array.isArray(profile.workPhotos) && profile.workPhotos.length === 0)) {
-            await callSendPush(profile.id, "Complete your profile", "Complete your profile to get discovered by more clients.", { screen: "edit_profile" });
+        case "profile_incomplete": {
+          const hasPhoto = !!profile.photoUrl;
+          const hasAddress = !!profile.workspaceAddress;
+          if (!hasPhoto || !hasAddress) {
+            await callSendPush(profileId, "Complete your profile", "Complete your profile to get discovered by more clients.", { screen: "edit_profile" });
             sent++;
           }
           break;
+        }
       }
     }
 
