@@ -163,7 +163,7 @@ class ProviderBottomSheet extends StatelessWidget {
                       onPressed: () {
                         HapticFeedback.lightImpact();
                         Navigator.pop(context);
-                        Navigator.pushNamed(context, '/profile', arguments: provider.uid);
+                        Navigator.of(context, rootNavigator: true).pushNamed('/profile', arguments: provider.uid);
                       },
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),
@@ -178,7 +178,7 @@ class ProviderBottomSheet extends StatelessWidget {
                       onPressed: () {
                         HapticFeedback.lightImpact();
                         Navigator.pop(context);
-                        Navigator.pushNamed(context, '/chat', arguments: provider.uid);
+                        Navigator.of(context, rootNavigator: true).pushNamed('/chat', arguments: provider.uid);
                       },
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),
