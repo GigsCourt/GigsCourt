@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/auth_service.dart';
 
 class AuthScreen extends StatefulWidget {
@@ -53,15 +54,32 @@ class _AuthScreenState extends State<AuthScreen> {
           _emailController.text.trim(),
           _passwordController.text,
         );
+        // Login — email already verified during sign up, check profile
+        HapticFeedback.heavyImpact();
+        if (mounted) {
+          final user = _authService.currentUser;
+          if (user != null) {
+            final doc = await FirebaseFirestore.instance
+                .collection('profiles')
+                .doc(user.uid)
+                .get();
+            if (doc.exists) {
+              Navigator.pushReplacementNamed(context, '/home');
+            } else {
+              Navigator.pushReplacementNamed(context, '/profile-setup');
+            }
+          }
+        }
       } else {
         await _authService.signUp(
           _emailController.text.trim(),
           _passwordController.text,
         );
-      }
-      HapticFeedback.heavyImpact();
-      if (mounted) {
-        Navigator.pushReplacementNamed(context, '/verify-email');
+        // Sign up — email verification required
+        HapticFeedback.heavyImpact();
+        if (mounted) {
+          Navigator.pushReplacementNamed(context, '/verify-email');
+        }
       }
     } catch (e) {
       HapticFeedback.vibrate();
