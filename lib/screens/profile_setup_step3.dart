@@ -33,6 +33,7 @@ class _ProfileSetupStep3State extends State<ProfileSetupStep3> {
   static const int _maxRetries = 2;
   Timer? _retryTimer;
   bool _permissionDeniedPermanently = false;
+  bool _mapReady = false;
   static const LatLng _lagosFallback = LatLng(9.082, 8.6753);
 
   @override
@@ -88,7 +89,7 @@ class _ProfileSetupStep3State extends State<ProfileSetupStep3> {
           _isLoadingLocation = false;
           _locationBannerMessage = null;
         });
-        _mapController.move(_center, 15.0);
+        _moveMapToCenter();
         _reverseGeocode(_center);
         _notifyParent();
       }
@@ -96,6 +97,18 @@ class _ProfileSetupStep3State extends State<ProfileSetupStep3> {
       _handleLocationFailure('Location request timed out. Retrying...');
     } catch (e) {
       _handleLocationFailure('Couldn\'t get your location. Retrying...');
+    }
+  }
+
+  void _moveMapToCenter() {
+    if (_mapReady) {
+      _mapController.move(_center, 15.0);
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _mapReady) {
+          _mapController.move(_center, 15.0);
+        }
+      });
     }
   }
 
@@ -216,28 +229,12 @@ class _ProfileSetupStep3State extends State<ProfileSetupStep3> {
               ],
             ),
           ),
-        // Map
+        // Map — only renders after location is resolved
         Expanded(
           flex: 3,
-          child: Stack(
-            children: [
-              FlutterMap(
-                mapController: _mapController,
-                options: MapOptions(
-                  initialCenter: _center,
-                  initialZoom: 15.0,
-                  onMapEvent: _onMapEvent,
-                ),
-                children: [
-                  TileLayer(
-                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    userAgentPackageName: 'com.gigscourt.app',
-                  ),
-                ],
-              ),
-              if (_isLoadingLocation)
-                Container(
-                  color: Theme.of(context).scaffoldBackgroundColor.withAlpha(179),
+          child: _isLoadingLocation
+              ? Container(
+                  color: Theme.of(context).scaffoldBackgroundColor,
                   child: const Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -251,20 +248,40 @@ class _ProfileSetupStep3State extends State<ProfileSetupStep3> {
                       ],
                     ),
                   ),
+                )
+              : Stack(
+                  children: [
+                    FlutterMap(
+                      mapController: _mapController,
+                      options: MapOptions(
+                        initialCenter: _center,
+                        initialZoom: 15.0,
+                        onMapEvent: _onMapEvent,
+                        onMapReady: () {
+                          setState(() => _mapReady = true);
+                          _moveMapToCenter();
+                        },
+                      ),
+                      children: [
+                        TileLayer(
+                          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                          userAgentPackageName: 'com.gigscourt.app',
+                        ),
+                      ],
+                    ),
+                    const IgnorePointer(
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.location_on, size: 44, color: Color(0xFF1A1F71)),
+                            SizedBox(height: 44),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              const IgnorePointer(
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.location_on, size: 44, color: Color(0xFF1A1F71)),
-                      SizedBox(height: 44),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
         ),
         // Address field
         Expanded(
