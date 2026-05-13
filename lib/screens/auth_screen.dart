@@ -64,7 +64,7 @@ class _AuthScreenState extends State<AuthScreen> {
                 .doc(user.uid)
                 .get();
             if (doc.exists) {
-              Navigator.pushReplacementNamed(context, '/home');
+              Navigator.pushReplacementNamed(context, '/main');
             } else {
               Navigator.pushReplacementNamed(context, '/profile-setup');
             }
