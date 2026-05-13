@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_paystack_plus/flutter_paystack_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -244,21 +245,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        // TODO: Open Paystack checkout with data['accessCode'] using flutter_paystack_plus
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Payment initiated. Reference: ${data['reference']}')),
-          );
+        final accessCode = data['accessCode'] as String;
+
+        // Open Paystack checkout
+        final result = await PaystackPlus.instance.checkout(
+          context: context,
+          accessCode: accessCode,
+        );
+
+        if (result.status == CheckoutStatus.successful) {
+          HapticFeedback.heavyImpact();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Payment successful! Your credits will be updated shortly.')),
+            );
+            _loadSettings(); // Refresh credit balance
+          }
+        } else if (result.status == CheckoutStatus.cancelled) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Payment cancelled.')),
+            );
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Payment failed. Please try again.')),
+            );
+          }
         }
       } else {
         final error = jsonDecode(response.body);
+        HapticFeedback.vibrate();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(error['error'] ?? 'Payment failed')),
+            SnackBar(content: Text(error['error'] ?? 'Payment initialization failed')),
           );
         }
       }
     } catch (e) {
+      HapticFeedback.vibrate();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error: $e')),
