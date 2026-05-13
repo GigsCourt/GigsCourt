@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/auth_service.dart';
 
 class VerifyEmailScreen extends StatefulWidget {
@@ -18,7 +19,18 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
     try {
       final verified = await _authService.isEmailVerified();
       if (verified && mounted) {
-        Navigator.pushReplacementNamed(context, '/home');
+        final user = _authService.currentUser;
+        if (user != null) {
+          final doc = await FirebaseFirestore.instance
+              .collection('profiles')
+              .doc(user.uid)
+              .get();
+          if (doc.exists) {
+            Navigator.pushReplacementNamed(context, '/home');
+          } else {
+            Navigator.pushReplacementNamed(context, '/profile-setup');
+          }
+        }
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Email not verified yet. Check your inbox.')),
