@@ -4,6 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
 import 'home_screen.dart';
+import 'search_screen.dart';
+import 'profile_screen.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -16,19 +18,17 @@ class _MainShellState extends State<MainShell> {
   int _currentIndex = 0;
   final AuthService _authService = AuthService();
   int _unreadChats = 0;
-
-  // Placeholder screens for tabs not yet built
-  static const _placeholders = [
-    HomeScreen(),
-    _PlaceholderScreen(label: 'Search'),
-    _PlaceholderScreen(label: 'Chats'),
-    _PlaceholderScreen(label: 'Profile'),
-    _PlaceholderScreen(label: 'Admin'),
-  ];
+  final List<Widget> _screens = [];
 
   @override
   void initState() {
     super.initState();
+    _screens.addAll([
+      const HomeScreen(),
+      const SearchScreen(),
+      const _PlaceholderScreen(label: 'Chats'),
+      const ProfileScreen(),
+    ]);
     _listenToUnreadChats();
   }
 
@@ -41,8 +41,6 @@ class _MainShellState extends State<MainShell> {
         .where('participants', arrayContains: user.uid)
         .snapshots()
         .listen((snapshot) {
-      // Count chats with unread messages for current user
-      // This will be refined when chat is built
       if (mounted) {
         setState(() => _unreadChats = snapshot.docs.length);
       }
@@ -61,13 +59,18 @@ class _MainShellState extends State<MainShell> {
       _TabItem(icon: Icons.chat_bubble_outlined, activeIcon: Icons.chat_bubble, index: 2, badge: _unreadChats),
       _TabItem(icon: Icons.person_outlined, activeIcon: Icons.person, index: 3),
       if (_isAdmin)
-        _TabItem(icon: Icons.shield_outlined, activeIcon: Icons.shield, index: 4),
+        _TabItem(icon: Icons.shield_outlined, activeIcon: Icons.shield, index: _screens.length),
     ];
+
+    // Add admin screen if admin
+    if (_isAdmin && _screens.length == 4) {
+      _screens.add(const _PlaceholderScreen(label: 'Admin'));
+    }
 
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
-        children: _placeholders,
+        children: _screens,
       ),
       bottomNavigationBar: Container(
         height: 56,
