@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'firebase_options.dart';
 import 'theme/app_theme.dart';
+import 'services/notification_service.dart';
 import 'screens/splash_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/auth_screen.dart';
@@ -25,6 +26,9 @@ void main() async {
       return await user.getIdToken() ?? '';
     },
   );
+
+  // Initialize FCM for push notifications
+  NotificationService().initialize();
 
   runApp(const GigsCourtApp());
 }
