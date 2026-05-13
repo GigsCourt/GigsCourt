@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { create, getNumericDate } from "https://deno.land/x/djwt@v2.2/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -25,38 +26,24 @@ async function getAccessToken(): Promise<string> {
     private_key: Deno.env.get("FIREBASE_SERVICE_ACCOUNT_KEY")!,
   };
 
-  const header = { alg: "RS256", typ: "JWT" };
-  const now = Math.floor(Date.now() / 1000);
-  const claim = {
-    iss: serviceAccount.client_email,
-    scope: "https://www.googleapis.com/auth/datastore",
-    aud: "https://oauth2.googleapis.com/token",
-    exp: now + 3600,
-    iat: now,
-  };
-
-  const encoder = new TextEncoder();
-  const keyData = serviceAccount.private_key
-    .replace("-----BEGIN PRIVATE KEY-----", "")
-    .replace("-----END PRIVATE KEY-----", "")
-    .replace(/\n/g, "");
+  const key = serviceAccount.private_key;
   
-  const key = await crypto.subtle.importKey(
-    "pkcs8",
-    Uint8Array.from(atob(keyData), (c) => c.charCodeAt(0)),
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false,
-    ["sign"]
+  const jwt = await create(
+    { alg: "RS256", typ: "JWT" },
+    {
+      iss: serviceAccount.client_email,
+      scope: "https://www.googleapis.com/auth/datastore",
+      aud: "https://oauth2.googleapis.com/token",
+      exp: getNumericDate(3600),
+      iat: getNumericDate(0),
+    },
+    key
   );
-
-  const jwt = `${btoa(JSON.stringify(header))}.${btoa(JSON.stringify(claim))}`;
-  const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, encoder.encode(jwt));
-  const signedJwt = `${jwt}.${btoa(String.fromCharCode(...new Uint8Array(signature)))}`;
 
   const response = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${signedJwt}`,
+    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`,
   });
 
   const data = await response.json();
@@ -80,9 +67,34 @@ async function queryFirestore(collection: string): Promise<any[]> {
     const result: any = { id: doc.name.split("/").pop() };
     for (const [key, value] of Object.entries(fields)) {
       const v = value as any;
-      result[key] = v.stringValue ?? v.integerValue ?? v.doubleValue ?? v.booleanValue ?? v.timestampValue ?? null;
+      if (v.arrayValue) {
+        result[key] = (v.arrayValue.values || []).map((item: any) => 
+          item.stringValue ?? item.integerValue ?? item.doubleValue ?? item.booleanValue ?? null
+        );
+      } else {
+        result[key] = v.stringValue ?? v.integerValue ?? v.doubleValue ?? v.booleanValue ?? v.timestampValue ?? null;
+      }
     }
     return result;
+  });
+}
+
+async function queryFirestoreWithFilter(collection: string, field: string, operator: string, value: any): Promise<any[]> {
+  const accessToken = await getAccessToken();
+  const projectId = Deno.env.get("FIREBASE_PROJECT_ID")!;
+  
+  const allDocs = await queryFirestore(collection);
+  
+  // Simple client-side filtering since Firestore REST API structured queries are complex
+  return allDocs.filter((doc) => {
+    const fieldValue = doc[field];
+    switch (operator) {
+      case "==": return fieldValue == value;
+      case "!=": return fieldValue != value;
+      case ">": return fieldValue > value;
+      case "<": return fieldValue < value;
+      default: return false;
+    }
   });
 }
 
@@ -92,26 +104,146 @@ serve(async (req) => {
   }
 
   try {
-    const profiles = await queryFirestore("profiles");
-    
-    // Return first profile to debug field parsing
-    if (profiles.length > 0) {
-      return new Response(JSON.stringify({ 
-        success: true, 
-        count: profiles.length,
-        firstProfile: profiles[0]
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    const { type } = await req.json();
+    const now = new Date();
+    const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
+    const threeHoursAgo = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+    const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000);
+
+    let sent = 0;
+
+    switch (type) {
+      case "review_reminder": {
+        // Find pending gigs where client hasn't submitted a review
+        const gigs = await queryFirestore("gigs");
+        for (const gig of gigs) {
+          if (gig.status === "pending" && gig.clientId) {
+            const provider = await getProfile(gig.providerId);
+            const providerName = provider?.name || "your provider";
+            await callSendPush(gig.clientId, "Rate your gig", `Rate ${providerName}'s work to help them build their reputation.`, { screen: "gig", gigId: gig.id });
+            sent++;
+          }
+        }
+        break;
+      }
+
+      case "register_gig_reminder": {
+        // Find chats with recent messages but no active gig
+        const chats = await queryFirestore("chats");
+        for (const chat of chats) {
+          if (!chat.gigId && chat.lastMessageTime) {
+            const lastTime = new Date(chat.lastMessageTime);
+            if (lastTime > sixHoursAgo) {
+              const participants = chat.participants || [];
+              for (const uid of participants) {
+                if (uid) {
+                  const otherPerson = await getProfile(participants.find((p: string) => p !== uid));
+                  const otherName = otherPerson?.name || "this person";
+                  await callSendPush(uid, "Register a gig?", `Offering services to ${otherName}? Register a gig to get rated and reviewed.`, { screen: "chat", chatId: chat.id });
+                  sent++;
+                }
+              }
+            }
+          }
+        }
+        break;
+      }
+
+      case "inactive_users": {
+        const profiles = await queryFirestore("profiles");
+        for (const profile of profiles) {
+          const updatedAt = profile.updatedAt ? new Date(profile.updatedAt) : null;
+          if (updatedAt && updatedAt < threeDaysAgo) {
+            await callSendPush(profile.id, "We miss you!", "Discover new providers near you on GigsCourt", { screen: "home" });
+            sent++;
+          }
+        }
+        break;
+      }
+
+      case "provider_inactive_7d": {
+        const profiles = await queryFirestore("profiles");
+        for (const profile of profiles) {
+          const services = profile.services || [];
+          const gigCount7Days = parseInt(profile.gigCount7Days || "0");
+          if (services.length > 0 && gigCount7Days === 0) {
+            await callSendPush(profile.id, "No gigs this week", "You haven't completed a gig this week. Update your services to attract more clients.", { screen: "edit_services" });
+            sent++;
+          }
+        }
+        break;
+      }
+
+      case "low_credits": {
+        const profiles = await queryFirestore("profiles");
+        for (const profile of profiles) {
+          const services = profile.services || [];
+          const credits = parseInt(profile.credits || "0");
+          if (services.length > 0 && credits <= 1) {
+            await callSendPush(profile.id, "Low credits", `You have ${credits} credit${credits === 1 ? "" : "s"} left. Buy more credits to register gigs and get reviewed.`, { screen: "credits" });
+            sent++;
+          }
+        }
+        break;
+      }
+
+      case "boost_reputation": {
+        const profiles = await queryFirestore("profiles");
+        for (const profile of profiles) {
+          const lastGigAt = profile.lastGigCompletedAt ? new Date(profile.lastGigCompletedAt) : null;
+          const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+          if (lastGigAt && lastGigAt > yesterday) {
+            await callSendPush(profile.id, "Keep it up!", "Great work! You completed a gig today, keep it up to get more clients. This will boost your reputation.", { screen: "profile" });
+            sent++;
+          }
+        }
+        break;
+      }
+
+      case "profile_incomplete": {
+        const profiles = await queryFirestore("profiles");
+        for (const profile of profiles) {
+          const hasPhoto = !!profile.photoUrl;
+          const hasAddress = !!profile.workspaceAddress;
+          if (!hasPhoto || !hasAddress) {
+            await callSendPush(profile.id, "Complete your profile", "Complete your profile to get discovered by more clients.", { screen: "edit_profile" });
+            sent++;
+          }
+        }
+        break;
+      }
     }
 
-    return new Response(JSON.stringify({ success: true, count: 0 }), {
+    return new Response(JSON.stringify({ success: true, type, sent }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
+    console.error("Error:", error);
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
+
+// Helper: get a single profile by ID
+async function getProfile(userId: string): Promise<any | null> {
+  if (!userId) return null;
+  const accessToken = await getAccessToken();
+  const projectId = Deno.env.get("FIREBASE_PROJECT_ID")!;
+  
+  const response = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/profiles/${userId}`,
+    { headers: { "Authorization": `Bearer ${accessToken}` } }
+  );
+
+  if (response.status === 404) return null;
+  const data = await response.json();
+  const fields = data.fields || {};
+  const result: any = {};
+  for (const [key, value] of Object.entries(fields)) {
+    const v = value as any;
+    result[key] = v.stringValue ?? v.integerValue ?? v.doubleValue ?? v.booleanValue ?? v.timestampValue ?? null;
+  }
+  return result;
+}
