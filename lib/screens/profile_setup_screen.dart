@@ -129,21 +129,19 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Progress bar
+            // Header with back button + step indicator
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
               child: Row(
                 children: [
-                  // Back button
                   if (_currentStep > 0)
                     GestureDetector(
                       onTap: () => _goToStep(_currentStep - 1),
                       child: const Icon(Icons.arrow_back),
                     ),
                   if (_currentStep > 0) const SizedBox(width: 12),
-                  // Progress percentage
                   Text(
-                    '${((_currentStep + 1) / 3 * 100).round()}%',
+                    'Step ${_currentStep + 1} of 3',
                     style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
@@ -151,9 +149,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                     ),
                   ),
                   const Spacer(),
-                  // Step indicator
                   Text(
-                    'Step ${_currentStep + 1} of 3',
+                    '${((_currentStep + 1) / 3 * 100).round()}%',
                     style: const TextStyle(
                       fontSize: 12,
                       color: Color(0xFF6B7280),
@@ -162,20 +159,28 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 ],
               ),
             ),
-            // Progress bar line
+            // Expanding dots
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: (_currentStep + 1) / 3,
-                  backgroundColor: Theme.of(context).cardColor,
-                  color: const Color(0xFF1A1F71),
-                  minHeight: 4,
-                ),
+              child: Row(
+                children: List.generate(3, (index) {
+                  final isActive = index <= _currentStep;
+                  final isCurrent = index == _currentStep;
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 250),
+                    curve: Curves.easeInOut,
+                    margin: const EdgeInsets.only(right: 8),
+                    width: isCurrent ? 28 : 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: isActive ? const Color(0xFF1A1F71) : Theme.of(context).cardColor,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  );
+                }),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 16),
             // Steps
             Expanded(
               child: PageView(
