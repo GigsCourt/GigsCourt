@@ -7,6 +7,7 @@ import 'home_screen.dart';
 import 'search_screen.dart';
 import 'chat_list_screen.dart';
 import 'profile_screen.dart';
+import 'admin_screen.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -65,7 +66,7 @@ class _MainShellState extends State<MainShell> {
 
     // Add admin screen if admin
     if (_isAdmin && _screens.length == 4) {
-      _screens.add(const _PlaceholderScreen(label: 'Admin'));
+      _screens.add(const AdminScreen());
     }
 
     return Scaffold(
@@ -159,19 +160,4 @@ class _TabItem {
     required this.index,
     this.badge,
   });
-}
-
-class _PlaceholderScreen extends StatelessWidget {
-  final String label;
-  const _PlaceholderScreen({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Text(
-        label,
-        style: const TextStyle(fontSize: 18, color: Color(0xFF6B7280)),
-      ),
-    );
-  }
 }
