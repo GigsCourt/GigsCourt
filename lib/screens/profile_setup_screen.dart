@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:latlong2/latlong.dart';
 import '../services/auth_service.dart';
 import '../services/image_service.dart';
+import '../services/push_service.dart';
 import 'profile_setup_step1.dart';
 import 'profile_setup_step2.dart';
 import 'profile_setup_step3.dart';
@@ -108,6 +109,9 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         await _supabase.from('profiles').delete().eq('id', user.uid);
         rethrow;
       }
+
+      // Send welcome notification (fire-and-forget)
+      PushService().sendWelcome(user.uid);
 
       if (mounted) {
         Navigator.pushReplacementNamed(context, '/home');
