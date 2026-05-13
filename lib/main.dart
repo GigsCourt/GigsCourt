@@ -38,11 +38,14 @@ void main() async {
 class GigsCourtApp extends StatelessWidget {
   const GigsCourtApp({super.key});
 
+  static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'GigsCourt',
       debugShowCheckedModeBanner: false,
+      navigatorKey: GigsCourtApp.navigatorKey,
       themeMode: ThemeMode.system,
       darkTheme: AppTheme.darkTheme,
       theme: AppTheme.lightTheme,
