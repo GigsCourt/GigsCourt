@@ -99,7 +99,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
           'gigCount': 0,
           'gigCount7Days': 0,
           'gigCount30Days': 0,
-          'credits': 0,
+          'credits': 5,
           'showPhone': true,
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
