@@ -3,6 +3,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_paystack_plus/flutter_paystack_plus.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'firebase_options.dart';
 import 'theme/app_theme.dart';
 import 'services/notification_service.dart';
@@ -54,10 +56,41 @@ class GigsCourtApp extends StatelessWidget {
       darkTheme: AppTheme.darkTheme,
       theme: AppTheme.lightTheme,
       builder: (context, child) {
+        ErrorWidget.builder = (FlutterErrorDetails details) {
+          final error = details.exception;
+          if (error is FirebaseException && error.code == 'failed-precondition') {
+            final message = error.message ?? '';
+            final linkMatch = RegExp(r'https://console\.firebase\.google\.com[^\s]*').firstMatch(message);
+            if (linkMatch != null) {
+              final link = linkMatch.group(0)!;
+              return Material(
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.build_outlined, size: 48, color: Color(0xFF6B7280)),
+                        const SizedBox(height: 16),
+                        const Text('Firestore Index Required', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 8),
+                        const Text('This query requires a composite index.', textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: Color(0xFF6B7280))),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: () => launchUrl(Uri.parse(link)),
+                          child: const Text('Create Index'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }
+          }
+          return ErrorWidget(details.exception);
+        };
         return GestureDetector(
-          onTap: () {
-            FocusScope.of(context).unfocus();
-          },
+          onTap: () => FocusScope.of(context).unfocus(),
           behavior: HitTestBehavior.translucent,
           child: child!,
         );
