@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
 
 class ImageService {
   static const String _publicKey = 'public_YDOcWLpiiHDlpU+y4GXqUjVDEaQ=';
@@ -9,25 +10,51 @@ class ImageService {
 
   final ImagePicker _picker = ImagePicker();
 
-  Future<File?> pickFromGallery() async {
+  Future<File?> pickFromGallery({bool crop = true}) async {
     final xFile = await _picker.pickImage(
       source: ImageSource.gallery,
       imageQuality: 85,
       maxWidth: 1024,
     );
-    return xFile != null ? File(xFile.path) : null;
+    if (xFile == null) return null;
+    if (crop) return _cropImage(File(xFile.path));
+    return File(xFile.path);
   }
 
-  Future<File?> takePhoto() async {
+  Future<File?> takePhoto({bool crop = true}) async {
     final xFile = await _picker.pickImage(
       source: ImageSource.camera,
       imageQuality: 85,
       maxWidth: 1024,
     );
-    return xFile != null ? File(xFile.path) : null;
+    if (xFile == null) return null;
+    if (crop) return _cropImage(File(xFile.path));
+    return File(xFile.path);
   }
 
-  Future<ImageKitUploadResult> uploadToImageKit(File file, String userId) async {
+  Future<File?> _cropImage(File file) async {
+    final croppedFile = await ImageCropper().cropImage(
+      sourcePath: file.path,
+      aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
+      uiSettings: [
+        AndroidUiSettings(
+          toolbarTitle: 'Crop Photo',
+          toolbarColor: '#1A1F71',
+          toolbarWidgetColor: '#FFFFFF',
+          backgroundColor: '#121212',
+          cropFrameColor: '#1A1F71',
+          hideBottomControls: true,
+        ),
+        IOSUiSettings(
+          title: 'Crop Photo',
+          minimumRectSize: 100,
+        ),
+      ],
+    );
+    return croppedFile != null ? File(croppedFile.path) : null;
+  }
+
+  Future<ImageKitUploadResult> uploadToImageKit(File file, String userId, {String folder = '/profile_photos'}) async {
     try {
       final authResponse = await http.get(
         Uri.parse('https://ohysatmlieiatzwqwjyt.supabase.co/functions/v1/imagekit-auth'),
@@ -51,7 +78,7 @@ class ImageService {
       request.fields['expire'] = expire.toString();
       request.fields['signature'] = signature;
       request.fields['fileName'] = '${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      request.fields['folder'] = '/profile_photos';
+      request.fields['folder'] = folder;
       request.files.add(await http.MultipartFile.fromPath('file', file.path));
 
       final uploadResponse = await request.send();
