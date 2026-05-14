@@ -44,8 +44,9 @@ class GigBanner extends StatelessWidget {
             }
 
             final gig = gigSnapshot.data!.data()!;
-            final status = gig['status'] ?? 'pending';
-            final providerId = gig['providerId'];
+            final gigData = gig as Map<String, dynamic>;
+final status = gigData['status'] ?? 'pending';
+final providerId = gigData['providerId'];
 
             if (status == 'completed' || status == 'cancelled') {
               return _buildNoGig(context);
