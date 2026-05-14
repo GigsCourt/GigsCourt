@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
@@ -37,17 +38,16 @@ class ImageService {
       sourcePath: file.path,
       aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
       uiSettings: [
-        AndroidUiSettings(
+        const AndroidUiSettings(
           toolbarTitle: 'Crop Photo',
-          toolbarColor: '#1A1F71',
-          toolbarWidgetColor: '#FFFFFF',
-          backgroundColor: '#121212',
-          cropFrameColor: '#1A1F71',
+          toolbarColor: Color(0xFF1A1F71),
+          toolbarWidgetColor: Colors.white,
+          backgroundColor: Color(0xFF121212),
+          cropFrameColor: Color(0xFF1A1F71),
           hideBottomControls: true,
         ),
-        IOSUiSettings(
+        const IOSUiSettings(
           title: 'Crop Photo',
-          minimumRectSize: 100,
         ),
       ],
     );
