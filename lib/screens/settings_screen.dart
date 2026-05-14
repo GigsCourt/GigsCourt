@@ -248,12 +248,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         final accessCode = data['accessCode'] as String;
 
         // Open Paystack checkout
-        final result = await PaystackPlus.instance.checkout(
+        final result = await PaystackPlus.checkout(
           context: context,
           accessCode: accessCode,
         );
 
-        if (result.status == CheckoutStatus.successful) {
+        if (result.status == PaystackPlus.success) {
           HapticFeedback.heavyImpact();
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -261,7 +261,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             );
             _loadSettings(); // Refresh credit balance
           }
-        } else if (result.status == CheckoutStatus.cancelled) {
+        } else if (result.status == PaystackPlus.cancelled) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Payment cancelled.')),
