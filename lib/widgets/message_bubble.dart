@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:intl/intl.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class MessageBubble extends StatefulWidget {
   final Map<String, dynamic> message;
@@ -231,7 +232,7 @@ class _MessageBubbleState extends State<MessageBubble> {
           ),
           const SizedBox(width: 4),
           Text(
-            _formatDuration(_isPlaying ? _position : Duration(milliseconds: (duration * 1000).toInt())),
+            _formatDuration(_isPlaying ? _position : Duration(milliseconds: ((duration * 1000) as num).toInt())),
             style: TextStyle(
               fontSize: 11,
               color: widget.isMine ? Colors.white.withAlpha(179) : const Color(0xFF6B7280),
