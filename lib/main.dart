@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:flutter_paystack_plus/flutter_paystack_plus.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'firebase_options.dart';
@@ -32,8 +31,6 @@ void main() async {
     },
   );
 
-  // Initialize Paystack
-  PaystackPlus.init(publicKey: 'pk_test_4f6ae42964ab8da60e2f1c77cfb6fe1cd30806cc');
 
   // Initialize FCM for push notifications
   NotificationService().initialize();
