@@ -409,7 +409,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             stream: _firestore.collection('chats').doc(_chatId).snapshots(),
             builder: (context, chatSnapshot) {
               final chatData = chatSnapshot.data?.data();
-final gigId = (chatData as Map<String, dynamic>?)?.['gigId'] as String?;
+final gigId = chatData != null ? (chatData as Map<String, dynamic>)['gigId'] as String? : null;
 
               if (gigId == null) {
                 return Padding(
@@ -446,9 +446,9 @@ final gigId = (chatData as Map<String, dynamic>?)?.['gigId'] as String?;
                     );
                   }
 
-                  final gig = gigSnapshot.data!.data()!;
-                  final status = gig['status'] ?? 'pending';
-                  final providerId = gig['providerId'] as String?;
+                  final gig = gigSnapshot.data!.data()! as Map<String, dynamic>;
+final status = gig['status'] ?? 'pending';
+final providerId = gig['providerId'] as String?;
 
                   if (status == 'completed' || status == 'cancelled') {
                     return Padding(
