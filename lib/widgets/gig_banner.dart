@@ -30,7 +30,7 @@ class GigBanner extends StatelessWidget {
         if (!chatSnapshot.hasData) return const SizedBox.shrink();
 
         final chatData = chatSnapshot.data?.data();
-        final gigId = chatData?['gigId'] as String?;
+        final gigId = (chatData as Map<String, dynamic>?)?.['gigId'] as String?;
 
         if (gigId == null) {
           return _buildNoGig(context);
