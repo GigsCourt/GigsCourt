@@ -184,7 +184,7 @@ class _MessageBubbleState extends State<MessageBubble> {
   }
 
   Widget _buildVoice() {
-    final duration = widget.message['duration'] ?? 0.0;
+    final duration = (widget.message['duration'] ?? 0.0).toDouble();
     final totalMs = _totalDuration.inMilliseconds > 0 ? _totalDuration.inMilliseconds.toDouble() : (duration * 1000).toDouble();
     final positionMs = _position.inMilliseconds.toDouble();
 
