@@ -1,4 +1,4 @@
-name: Build iOS (Unsigned IPA)
+name: Build iOS (Development Signed IPA)
 
 on:
   workflow_dispatch:
@@ -19,22 +19,22 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Remove code signing requirements
+      - name: Add Development Team
         run: |
-          sed -i '' 's/"CODE_SIGN_IDENTITY\[sdk=iphoneos\*\]" = "iPhone Developer";/"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";/g' ios/Runner.xcodeproj/project.pbxproj
+          echo "DEVELOPMENT_TEAM=62K3DY93D7" >> ios/Flutter/Release.xcconfig
+          # Also add to project.pbxproj via sed for the conditional identity
+          cd ios
+          sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Automatic;\n\t\t\t\tDEVELOPMENT_TEAM = 62K3DY93D7;/g' Runner.xcodeproj/project.pbxproj
+          cd ..
 
-      - name: Build unsigned iOS IPA
-        run: flutter build ios --release --no-codesign
-
-      - name: Create IPA
-        run: |
-          mkdir -p Payload
-          cp -r build/ios/iphoneos/Runner.app Payload/
-          zip -r gigscourt-unsigned.ipa Payload
-          rm -rf Payload
+      - name: Build signed iOS IPA
+        run: flutter build ipa --release --export-method=development
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: gigscourt-unsigned-ios
-          path: gigscourt-unsigned.ipa
+          name: gigscourt-signed-ios
+          path: build/ios/ipa/gigscourt.ipa
