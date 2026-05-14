@@ -8,7 +8,7 @@ class TrendingSection extends StatefulWidget {
   final bool hasMore;
   final String? nextCursor;
   final Future<PaginatedResult> Function(String? cursor) onFetchMore;
-  final VoidCallback onProviderTap;
+  final Function(ProviderCardData provider) onProviderTap;
 
   const TrendingSection({
     super.key,
@@ -27,7 +27,7 @@ class _TrendingSectionState extends State<TrendingSection> {
   final ScrollController _scrollController = ScrollController();
   late List<ProviderCardData> _providers;
   String? _nextCursor;
-  bool _hasMore;
+  bool _hasMore = false;
   bool _isLoading = false;
 
   @override
@@ -150,9 +150,9 @@ class _TrendingSectionState extends State<TrendingSection> {
                   child: ProviderCard(
                     provider: _providers[index],
                     isTrending: true,
-                    onTap: () => widget.onProviderTap,
+                    onTap: () => widget.onProviderTap(_providers[index]),
                   ),
-                ),
+                );
               );
             },
           ),
