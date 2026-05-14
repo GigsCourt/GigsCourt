@@ -36,7 +36,6 @@ class _TrendingSectionState extends State<TrendingSection> {
     _providers = widget.initialProviders;
     _nextCursor = widget.nextCursor;
     _hasMore = widget.hasMore;
-
     _scrollController.addListener(_onScroll);
   }
 
@@ -56,17 +55,18 @@ class _TrendingSectionState extends State<TrendingSection> {
   Future<void> _fetchMore() async {
     if (_isLoading || !_hasMore) return;
     setState(() => _isLoading = true);
-
     try {
       final result = await widget.onFetchMore(_nextCursor);
-      setState(() {
-        _providers.addAll(result.providers);
-        _nextCursor = result.nextCursor;
-        _hasMore = result.hasMore;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _providers.addAll(result.providers);
+          _nextCursor = result.nextCursor;
+          _hasMore = result.hasMore;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -88,21 +88,9 @@ class _TrendingSectionState extends State<TrendingSection> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Trending',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    Text('Trending', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                     SizedBox(height: 2),
-                    Text(
-                      'Top providers this week near you',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFF6B7280),
-                      ),
-                    ),
+                    Text('Top providers this week near you', style: TextStyle(fontSize: 13, color: Color(0xFF6B7280))),
                   ],
                 ),
               ),
@@ -140,11 +128,8 @@ class _TrendingSectionState extends State<TrendingSection> {
                   ),
                 );
               }
-
               return Padding(
-                padding: EdgeInsets.only(
-                  left: index == 0 ? 0 : 4,
-                ),
+                padding: EdgeInsets.only(left: index == 0 ? 0 : 4),
                 child: SizedBox(
                   width: cardWidth,
                   child: ProviderCard(
@@ -152,7 +137,7 @@ class _TrendingSectionState extends State<TrendingSection> {
                     isTrending: true,
                     onTap: () => widget.onProviderTap(_providers[index]),
                   ),
-                );
+                ),
               );
             },
           ),
