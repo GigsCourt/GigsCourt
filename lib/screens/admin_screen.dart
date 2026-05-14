@@ -102,12 +102,12 @@ class _DashboardTabState extends State<_DashboardTab> {
         if (status == 'cancelled') cancelled++;
       }
       for (final doc in purchases.docs) {
-        revenue += (doc.data()['amount'] ?? 0).toInt();
+        revenue += ((doc.data()['amount'] ?? 0) as num).toInt();
       }
 
       if (mounted) {
         setState(() {
-          _totalUsers = profiles.count;
+          _totalUsers = profiles.count ?? 0;
           _totalGigs = gigs.docs.length;
           _completedGigs = completed;
           _pendingGigs = pending;
@@ -478,7 +478,7 @@ class _RevenueTabState extends State<_RevenueTab> {
     return _purchases.where((p) {
       final date = (p['createdAt'] as Timestamp?)?.toDate();
       return date != null && !date.isBefore(start) && date.isBefore(end.add(const Duration(days: 1)));
-    }).fold<int>(0, (sum, p) => sum + (p['amount'] ?? 0).toInt());
+    }).fold<int>(0, (sum, p) => sum + ((p['amount'] ?? 0) as num).toInt());
   }
 
   Map<int, Map<int, int>> _yearlyRevenue() {
@@ -487,7 +487,7 @@ class _RevenueTabState extends State<_RevenueTab> {
       final date = (p['createdAt'] as Timestamp?)?.toDate();
       if (date != null) {
         result[date.year] ??= {};
-        result[date.year]![date.month] = (result[date.year]![date.month] ?? 0) + (p['amount'] ?? 0).toInt();
+        result[date.year]![date.month] = (result[date.year]![date.month] ?? 0) + ((p['amount'] ?? 0) as num).toInt();
       }
     }
     return result;
