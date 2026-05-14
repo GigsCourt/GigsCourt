@@ -202,7 +202,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _onTrendingFetchMore(String? cursor) async {
+  Future<PaginatedResult> _onTrendingFetchMore(String? cursor) async {
     if (_userLocation == null) return;
     return _homeService.fetchTrending(
       userLocation: _userLocation!,
@@ -210,7 +210,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _onNearbyFetchMore(String? cursor) async {
+  Future<PaginatedResult> _onNearbyFetchMore(String? cursor) async {
     if (_userLocation == null) return;
     return _homeService.fetchNearby(
       userLocation: _userLocation!,
