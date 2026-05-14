@@ -245,35 +245,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final accessCode = data['accessCode'] as String;
+        final reference = data['reference'] as String;
 
-        // Open Paystack checkout
-        final result = await PaystackPlus.checkout(
+        await FlutterPaystackPlus.openPaystackPopup(
           context: context,
-          accessCode: accessCode,
+          customerEmail: user.email!,
+          amount: amount.toString(),
+          publicKey: 'pk_test_4f6ae42964ab8da60e2f1c77cfb6fe1cd30806cc',
+          reference: reference,
+          metadata: {'credits': credits.toString()},
+          onSuccess: () {
+            HapticFeedback.heavyImpact();
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Payment successful! Your credits will be updated shortly.')),
+              );
+              _loadSettings();
+            }
+          },
+          onClosed: () {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Payment cancelled.')),
+              );
+            }
+          },
         );
-
-        if (result.status == PaystackPlus.success) {
-          HapticFeedback.heavyImpact();
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Payment successful! Your credits will be updated shortly.')),
-            );
-            _loadSettings(); // Refresh credit balance
-          }
-        } else if (result.status == PaystackPlus.cancelled) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Payment cancelled.')),
-            );
-          }
-        } else {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Payment failed. Please try again.')),
-            );
-          }
-        }
       } else {
         final error = jsonDecode(response.body);
         HapticFeedback.vibrate();
