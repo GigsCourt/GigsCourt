@@ -171,7 +171,7 @@ class ChatService {
   }
 
   Stream<QuerySnapshot> getMessages(String chatId) {
-    return _firestore.collection('chats').doc(chatId).collection('messages').orderBy('createdAt', ascending: true).snapshots();
+    return _firestore.collection('chats').doc(chatId).collection('messages').orderBy('createdAt', descending: false).snapshots();
   }
 
   Stream<QuerySnapshot> getChats() {
