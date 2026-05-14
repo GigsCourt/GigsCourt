@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -70,7 +71,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         _myProfile = myDoc.data();
       });
     }
-    // Mark messages as read
     _chatService.markAsRead(_chatId);
   }
 
@@ -149,11 +149,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Microphone permission required')));
       return;
     }
-
     HapticFeedback.mediumImpact();
     final dir = await getTemporaryDirectory();
     final path = '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
-
     await _audioRecorder.start(const RecordConfig(encoder: AudioEncoder.aacLc), path: path);
     setState(() => _isRecording = true);
   }
@@ -161,12 +159,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   Future<void> _stopRecording() async {
     final path = await _audioRecorder.stop();
     setState(() => _isRecording = false);
-
     if (path != null) {
       HapticFeedback.heavyImpact();
       final file = File(path);
-      // Estimate duration from file size
-      final duration = await file.length() / 16000; // Approximate for AAC
+      final duration = await file.length() / 16000;
       await _chatService.sendVoice(_chatId, file, duration.clamp(0.5, 300));
       _scrollToBottom();
     }
@@ -216,13 +212,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         ),
       );
       if (buyCredits == true) {
-        // Navigate to buy credits
         Navigator.of(context, rootNavigator: true).pushNamed('/settings');
       }
       return;
     }
 
-    String? selectedService = services.first;
     final serviceChoice = await showDialog<String>(
       context: context,
       builder: (ctx) {
@@ -233,9 +227,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             content: DropdownButton<String>(
               value: chosen,
               items: services.map((s) => DropdownMenuItem(value: s, child: Text(s.replaceAll('-', ' ')))).toList(),
-              onChanged: (v) {
-                if (v != null) setState(() => chosen = v);
-              },
+              onChanged: (v) { if (v != null) setState(() => chosen = v); },
             ),
             actions: [
               TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
@@ -255,39 +247,56 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     }
   }
 
-  Future<void> _onGigTap(DocumentSnapshot gigDoc) async {
-    final gig = gigDoc.data() as Map<String, dynamic>;
-    final status = gig['status'];
+  Future<void> _onGigButtonTap(String? gigId, String? providerId, String status) async {
+    final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final isProvider = providerId == currentUid;
 
-    if (status == 'pending' && gig['clientId'] == FirebaseAuth.instance.currentUser?.uid) {
-      HapticFeedback.lightImpact();
-      final action = await showModalBottomSheet<String>(
-        context: context,
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-        builder: (ctx) => SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.star_outline),
-                title: const Text('Submit Review & Rating'),
-                onTap: () => Navigator.pop(ctx, 'review'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.cancel_outlined, color: Colors.red),
-                title: const Text('Cancel Gig', style: TextStyle(color: Colors.red)),
-                onTap: () => Navigator.pop(ctx, 'cancel'),
-              ),
+    if (status == 'pending') {
+      if (isProvider) {
+        // Provider can cancel
+        final cancel = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Cancel Gig'),
+            content: const Text('Do you want to cancel this gig?'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('No')),
+              TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Yes')),
             ],
           ),
-        ),
-      );
-
-      if (action == 'review') {
-        _showReviewSheet(gigDoc.id);
-      } else if (action == 'cancel') {
-        await _chatService.cancelGig(gigDoc.id);
+        );
+        if (cancel == true && gigId != null) {
+          await _chatService.cancelGig(gigId);
+        }
+      } else {
+        // Client can review or cancel
+        final action = await showModalBottomSheet<String>(
+          context: context,
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+          builder: (ctx) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.star_outline),
+                  title: const Text('Submit Review & Rating'),
+                  onTap: () => Navigator.pop(ctx, 'review'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.cancel_outlined, color: Colors.red),
+                  title: const Text('Cancel Gig', style: TextStyle(color: Colors.red)),
+                  onTap: () => Navigator.pop(ctx, 'cancel'),
+                ),
+              ],
+            ),
+          ),
+        );
+        if (action == 'review' && gigId != null) {
+          _showReviewSheet(gigId);
+        } else if (action == 'cancel' && gigId != null) {
+          await _chatService.cancelGig(gigId);
+        }
       }
     }
   }
@@ -376,25 +385,108 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                       child: CachedNetworkImage(
                         imageUrl: _otherProfile?['photoUrl'] ?? '',
                         width: 28, height: 28, fit: BoxFit.cover,
-                        errorWidget: (_, __, ___) => Container(width: 28, height: 28, color: Theme.of(context).cardColor, child: Icon(Icons.person, size: 14, color: Theme.of(context).textTheme.bodySmall?.color)),
+                        errorWidget: (_, __, ___) => Container(
+                          width: 28, height: 28, color: Theme.of(context).cardColor,
+                          child: Icon(Icons.person, size: 14, color: Theme.of(context).textTheme.bodySmall?.color),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Text(_otherProfile?['name'] ?? 'User', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Theme.of(context).textTheme.bodyLarge?.color)),
+                    Flexible(
+                      child: Text(
+                        _otherProfile?['name'] ?? 'User',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Theme.of(context).textTheme.bodyLarge?.color),
+                      ),
+                    ),
                   ],
                 ),
               )
             : null,
         actions: [
-          TextButton(
-            onPressed: _onRegisterGig,
-            child: const Text('Register Gig', style: TextStyle(fontSize: 13)),
+          StreamBuilder<DocumentSnapshot>(
+            stream: _firestore.collection('chats').doc(_chatId).snapshots(),
+            builder: (context, chatSnapshot) {
+              final chatData = chatSnapshot.data?.data();
+              final gigId = chatData?['gigId'] as String?;
+
+              if (gigId == null) {
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: OutlinedButton(
+                    onPressed: _onRegisterGig,
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Color(0xFF1A1F71)),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      shape: const StadiumBorder(),
+                      minimumSize: Size.zero,
+                    ),
+                    child: const Text('Register Gig', style: TextStyle(fontSize: 11)),
+                  ),
+                );
+              }
+
+              return StreamBuilder<DocumentSnapshot>(
+                stream: _firestore.collection('gigs').doc(gigId).snapshots(),
+                builder: (context, gigSnapshot) {
+                  if (!gigSnapshot.hasData || !gigSnapshot.data!.exists) {
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: OutlinedButton(
+                        onPressed: _onRegisterGig,
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: Color(0xFF1A1F71)),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          shape: const StadiumBorder(),
+                          minimumSize: Size.zero,
+                        ),
+                        child: const Text('Register Gig', style: TextStyle(fontSize: 11)),
+                      ),
+                    );
+                  }
+
+                  final gig = gigSnapshot.data!.data()!;
+                  final status = gig['status'] ?? 'pending';
+                  final providerId = gig['providerId'] as String?;
+
+                  if (status == 'completed' || status == 'cancelled') {
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: OutlinedButton(
+                        onPressed: _onRegisterGig,
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: Color(0xFF1A1F71)),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          shape: const StadiumBorder(),
+                          minimumSize: Size.zero,
+                        ),
+                        child: const Text('Register Gig', style: TextStyle(fontSize: 11)),
+                      ),
+                    );
+                  }
+
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: OutlinedButton(
+                      onPressed: () => _onGigButtonTap(gigId, providerId, status),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Colors.red),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        shape: const StadiumBorder(),
+                        minimumSize: Size.zero,
+                      ),
+                      child: const Text('Pending', style: TextStyle(fontSize: 11, color: Colors.red)),
+                    ),
+                  );
+                },
+              );
+            },
           ),
         ],
       ),
       body: Column(
         children: [
-          // Gig Banner
           if (_otherProfile != null)
             GigBanner(
               chatId: _chatId,
@@ -405,7 +497,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               onRegisterGig: _onRegisterGig,
               onBuyCredits: () {},
             ),
-          // Messages
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: _chatService.getMessages(_chatId),
@@ -413,14 +504,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                 if (!snapshot.hasData) {
                   return const Center(child: CircularProgressIndicator());
                 }
-
                 final messages = snapshot.data!.docs;
                 if (messages.isEmpty) {
                   return Center(
-                    child: Text('Send a message to start the conversation', style: TextStyle(color: Theme.of(context).textTheme.bodySmall?.color, fontSize: 13)),
+                    child: Text('Send a message to start the conversation',
+                      style: TextStyle(color: Theme.of(context).textTheme.bodySmall?.color, fontSize: 13)),
                   );
                 }
-
                 return ListView.builder(
                   controller: _scrollController,
                   reverse: true,
@@ -432,9 +522,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                     final msg = doc.data() as Map<String, dynamic>;
                     final isMine = msg['senderId'] == FirebaseAuth.instance.currentUser?.uid;
                     final deleted = msg['deleted_for_${FirebaseAuth.instance.currentUser?.uid}'] == true;
-
                     if (deleted) return const SizedBox.shrink();
-
                     return MessageBubble(
                       message: msg,
                       isMine: isMine,
@@ -450,7 +538,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               },
             ),
           ),
-          // Typing indicator
           StreamBuilder<bool>(
             stream: _chatService.isOtherUserTyping(_chatId),
             builder: (context, snapshot) {
@@ -463,16 +550,17 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               return const SizedBox.shrink();
             },
           ),
-          // Input bar
           Container(
             decoration: BoxDecoration(
               color: Theme.of(context).scaffoldBackgroundColor,
-              border: Border(top: BorderSide(color: Theme.of(context).brightness == Brightness.dark ? Colors.white.withAlpha(13) : Colors.black.withAlpha(13), width: 0.5)),
+              border: Border(top: BorderSide(
+                color: Theme.of(context).brightness == Brightness.dark ? Colors.white.withAlpha(13) : Colors.black.withAlpha(13),
+                width: 0.5,
+              )),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             child: Row(
               children: [
-                // Image button
                 GestureDetector(
                   onTap: _sendImage,
                   child: Container(
@@ -485,7 +573,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                   ),
                 ),
                 const SizedBox(width: 6),
-                // Text field
                 Expanded(
                   child: Container(
                     decoration: BoxDecoration(
@@ -507,7 +594,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                   ),
                 ),
                 const SizedBox(width: 6),
-                // Mic / Send button
                 _textController.text.isEmpty
                     ? GestureDetector(
                         onTap: _isRecording ? _stopRecording : _startRecording,
