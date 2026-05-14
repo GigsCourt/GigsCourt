@@ -28,7 +28,7 @@ class NearbySection extends StatefulWidget {
 class _NearbySectionState extends State<NearbySection> {
   late List<ProviderCardData> _providers;
   String? _nextCursor;
-  bool _hasMore;
+  bool _hasMore = false;
   bool _isLoading = false;
 
   @override
