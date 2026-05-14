@@ -48,7 +48,7 @@ class _SplashScreenState extends State<SplashScreen>
           .get();
 
       if (doc.exists) {
-        _navigateTo('/home');
+        _navigateTo('/main');
       } else {
         _navigateTo('/profile-setup');
       }
