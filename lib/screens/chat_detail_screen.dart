@@ -409,7 +409,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             stream: _firestore.collection('chats').doc(_chatId).snapshots(),
             builder: (context, chatSnapshot) {
               final chatData = chatSnapshot.data?.data();
-              final gigId = chatData?['gigId'] as String?;
+final gigId = (chatData as Map<String, dynamic>?)?.['gigId'] as String?;
 
               if (gigId == null) {
                 return Padding(
