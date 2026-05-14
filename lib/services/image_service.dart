@@ -38,7 +38,7 @@ class ImageService {
       sourcePath: file.path,
       aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
       uiSettings: [
-        const AndroidUiSettings(
+        AndroidUiSettings(
           toolbarTitle: 'Crop Photo',
           toolbarColor: Color(0xFF1A1F71),
           toolbarWidgetColor: Colors.white,
@@ -46,7 +46,7 @@ class ImageService {
           cropFrameColor: Color(0xFF1A1F71),
           hideBottomControls: true,
         ),
-        const IOSUiSettings(
+        IOSUiSettings(
           title: 'Crop Photo',
         ),
       ],
