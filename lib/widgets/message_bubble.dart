@@ -232,7 +232,7 @@ class _MessageBubbleState extends State<MessageBubble> {
           ),
           const SizedBox(width: 4),
           Text(
-            _formatDuration(_isPlaying ? _position : Duration(milliseconds: ((duration * 1000) as num).toInt())),
+            _formatDuration(_isPlaying ? _position : Duration(milliseconds: (duration * 1000).toInt())),
             style: TextStyle(
               fontSize: 11,
               color: widget.isMine ? Colors.white.withAlpha(179) : const Color(0xFF6B7280),
