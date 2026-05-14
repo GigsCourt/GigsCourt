@@ -33,7 +33,7 @@ void main() async {
   );
 
   // Initialize Paystack
-  PaystackPlus.instance.initialize(publicKey: 'pk_test_4f6ae42964ab8da60e2f1c77cfb6fe1cd30806cc');
+  PaystackPlus.init(publicKey: 'pk_test_4f6ae42964ab8da60e2f1c77cfb6fe1cd30806cc');
 
   // Initialize FCM for push notifications
   NotificationService().initialize();
