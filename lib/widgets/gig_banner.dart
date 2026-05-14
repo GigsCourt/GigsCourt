@@ -73,23 +73,90 @@ class GigBanner extends StatelessWidget {
   }
 
   Widget _buildPendingBanner(BuildContext context, bool isProvider) {
+    final text = isProvider
+        ? 'Waiting for $otherName to rate and review your work'
+        : '$otherName is waiting for your rating and review';
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       color: Theme.of(context).scaffoldBackgroundColor,
       child: Row(
         children: [
-          const Icon(Icons.info_outline, size: 14, color: Colors.orange),
+          const Icon(Icons.info_outline, size: 14, color: Colors.red),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              isProvider
-                  ? 'Waiting for $otherName to rate and review your work'
-                  : '$otherName is waiting for your rating and review',
-              style: const TextStyle(fontSize: 12, color: Colors.orange),
-            ),
+            child: _MarqueeText(text: text),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _MarqueeText extends StatefulWidget {
+  final String text;
+  const _MarqueeText({required this.text});
+
+  @override
+  State<_MarqueeText> createState() => _MarqueeTextState();
+}
+
+class _MarqueeTextState extends State<_MarqueeText> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final ScrollController _scrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+
+    _controller = AnimationController(
+      duration: const Duration(seconds: 8),
+      vsync: this,
+    );
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        final maxScroll = _scrollController.position.maxScrollExtent;
+        _controller.duration = Duration(milliseconds: (maxScroll * 20).toInt().clamp(4000, 15000));
+        _controller.repeat();
+        _controller.addListener(() {
+          if (_scrollController.hasClients) {
+            _scrollController.jumpTo(
+              _controller.value * maxScroll,
+            );
+          }
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 16,
+      child: ListView.builder(
+        controller: _scrollController,
+        scrollDirection: Axis.horizontal,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: 3,
+        itemBuilder: (context, index) {
+          return Padding(
+            padding: const EdgeInsets.only(right: 40),
+            child: Text(
+              widget.text,
+              style: const TextStyle(fontSize: 12, color: Colors.red),
+            ),
+          );
+        },
       ),
     );
   }
