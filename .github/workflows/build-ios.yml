@@ -19,8 +19,9 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Remove development team
-        run: sed -i '' 's/DEVELOPMENT_TEAM = .*/DEVELOPMENT_TEAM = "";/g' ios/Runner.xcodeproj/project.pbxproj
+      - name: Remove code signing requirements
+        run: |
+          sed -i '' 's/"CODE_SIGN_IDENTITY\[sdk=iphoneos\*\]" = "iPhone Developer";/"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";/g' ios/Runner.xcodeproj/project.pbxproj
 
       - name: Build unsigned iOS IPA
         run: flutter build ios --release --no-codesign
