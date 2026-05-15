@@ -39,6 +39,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String? _trendingCursor;
   String? _nearbyCursor;
   bool _isInitialLoad = true;
+  bool _isFetching = false;
 
   int _unreadCount = 0;
   StreamSubscription? _notificationSubscription;
@@ -69,11 +70,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _initialize() async {
-    // Show cached data immediately
     await _loadCachedData();
     _listenToNotifications();
 
-    // Get fresh location
     try {
       _userLocation = await _locationService.refreshLocation();
       if (mounted) {
@@ -125,7 +124,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _fetchFreshData() async {
-    if (_userLocation == null) return;
+    if (_userLocation == null || _isFetching) return;
+    _isFetching = true;
 
     try {
       final trendingResult = await _homeService.fetchTrending(userLocation: _userLocation!);
@@ -146,6 +146,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (mounted) {
         showError(context, e);
       }
+    } finally {
+      _isFetching = false;
     }
   }
 
@@ -251,47 +253,50 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildContent() {
-    return Column(
+    return Stack(
       children: [
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: _isCollapsed ? 10 : 20),
-          child: _isCollapsed ? _buildCollapsedHeader() : _buildExpandedHeader(),
-        ),
-        // Divider only when collapsed
-        if (_isCollapsed) const Divider(height: 1, thickness: 0.5),
-        Expanded(
-          child: _isInitialLoad
-              ? _buildShimmer()
-              : RefreshIndicator(
-                  onRefresh: _onRefresh,
-                  color: const Color(0xFF1A1F71),
-                  child: ListView(
-                    key: const PageStorageKey('home_list'),
-                    controller: _scrollController,
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    children: [
-                      const SizedBox(height: 16),
-                      TrendingSection(
-                        initialProviders: _trendingProviders,
-                        hasMore: _trendingHasMore,
-                        nextCursor: _trendingCursor,
-                        onFetchMore: _onTrendingFetchMore,
-                        onProviderTap: _onProviderTap,
+        Column(
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: _isCollapsed ? 10 : 20),
+              child: _isCollapsed ? _buildCollapsedHeader() : _buildExpandedHeader(),
+            ),
+            if (_isCollapsed) const Divider(height: 1, thickness: 0.5),
+            Expanded(
+              child: _isInitialLoad
+                  ? _buildShimmer()
+                  : RefreshIndicator(
+                      onRefresh: _onRefresh,
+                      color: const Color(0xFF1A1F71),
+                      child: ListView(
+                        key: const PageStorageKey('home_list'),
+                        controller: _scrollController,
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: [
+                          const SizedBox(height: 16),
+                          TrendingSection(
+                            initialProviders: _trendingProviders,
+                            hasMore: _trendingHasMore,
+                            nextCursor: _trendingCursor,
+                            onFetchMore: _onTrendingFetchMore,
+                            onProviderTap: _onProviderTap,
+                          ),
+                          const SizedBox(height: 24),
+                          NearbySection(
+                            initialProviders: _nearbyProviders,
+                            hasMore: _nearbyHasMore,
+                            nextCursor: _nearbyCursor,
+                            onFetchMore: _onNearbyFetchMore,
+                            onProviderTap: _onProviderTap,
+                            parentScrollController: _scrollController,
+                          ),
+                          const SizedBox(height: 80),
+                        ],
                       ),
-                      const SizedBox(height: 24),
-                      NearbySection(
-                        initialProviders: _nearbyProviders,
-                        hasMore: _nearbyHasMore,
-                        nextCursor: _nearbyCursor,
-                        onFetchMore: _onNearbyFetchMore,
-                        onProviderTap: _onProviderTap,
-                        parentScrollController: _scrollController,
-                      ),
-                      const SizedBox(height: 80),
-                    ],
-                  ),
-                ),
+                    ),
+            ),
+          ],
         ),
         if (_scrollController.hasClients && _scrollController.offset > 200)
           Positioned(
