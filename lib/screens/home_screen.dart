@@ -9,6 +9,7 @@ import 'notifications_screen.dart';
 import '../services/auth_service.dart';
 import '../services/location_service.dart';
 import '../services/home_service.dart';
+import '../theme/app_theme.dart';
 import '../widgets/trending_section.dart';
 import '../widgets/nearby_section.dart';
 import '../widgets/provider_bottom_sheet.dart';
@@ -40,6 +41,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String? _nearbyCursor;
   bool _isInitialLoad = true;
   bool _isFetching = false;
+  bool _hasFreshData = false;
 
   int _unreadCount = 0;
   StreamSubscription? _notificationSubscription;
@@ -95,6 +97,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       setState(() {
         _trendingProviders = cachedTrending;
         _nearbyProviders = cachedNearby;
+        _trendingHasMore = true;
+        _nearbyHasMore = true;
+        _trendingCursor = null;
+        _nearbyCursor = null;
         _isInitialLoad = false;
       });
     }
@@ -140,6 +146,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _nearbyCursor = nearbyResult.nextCursor;
           _nearbyHasMore = nearbyResult.hasMore;
           _isInitialLoad = false;
+          _hasFreshData = true;
         });
       }
     } catch (e) {
@@ -172,7 +179,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _onScroll() {
     final collapsed = _scrollController.hasClients && _scrollController.offset > 80;
     if (collapsed != _isCollapsed) {
-      HapticFeedback.selectionClick();
       setState(() => _isCollapsed = collapsed);
     }
   }
@@ -268,7 +274,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ? _buildShimmer()
                   : RefreshIndicator(
                       onRefresh: _onRefresh,
-                      color: const Color(0xFF1A1F71),
+                      color: AppTheme.royalBlue,
                       child: ListView(
                         key: const PageStorageKey('home_list'),
                         controller: _scrollController,
@@ -283,6 +289,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             onProviderTap: _onProviderTap,
                           ),
                           const SizedBox(height: 24),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 16),
+                            child: Text(
+                              'All service providers close to you',
+                              style: TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
                           NearbySection(
                             initialProviders: _nearbyProviders,
                             hasMore: _nearbyHasMore,
@@ -306,7 +320,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               onPressed: () {
                 _scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
               },
-              backgroundColor: const Color(0xFF1A1F71),
+              backgroundColor: AppTheme.royalBlue,
               child: const Icon(Icons.keyboard_arrow_up, color: Colors.white),
             ),
           ),
@@ -358,7 +372,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             right: 6, top: 6,
             child: Container(
               padding: const EdgeInsets.all(4),
-              decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF1A1F71)),
+              decoration: const BoxDecoration(shape: BoxShape.circle, color: AppTheme.royalBlue),
               child: Text(
                 _unreadCount > 99 ? '99+' : '$_unreadCount',
                 style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
