@@ -13,6 +13,8 @@ import 'screens/auth_screen.dart';
 import 'screens/verify_email_screen.dart';
 import 'screens/main_shell.dart';
 import 'screens/home_screen.dart';
+import 'screens/profile_screen.dart';
+import 'screens/chat_detail_screen.dart';
 import 'screens/profile_setup_screen.dart';
 
 
@@ -99,6 +101,15 @@ class GigsCourtApp extends StatelessWidget {
         '/verify-email': (context) => const VerifyEmailScreen(),
         '/main': (context) => const MainShell(),
         '/profile-setup': (context) => const ProfileSetupScreen(),
+        '/profile': (context) {
+          final uid = ModalRoute.of(context)?.settings.arguments as String?;
+          return ProfileScreen(uid: uid);
+        },
+        '/chat': (context) {
+          final uid = ModalRoute.of(context)?.settings.arguments as String?;
+          if (uid == null) return const MainShell();
+          return ChatDetailScreen(otherUid: uid);
+        },
       },
     );
   }
