@@ -179,7 +179,7 @@ class _ProfileSetupStep1State extends State<ProfileSetupStep1> {
                       height: 24,
                       decoration: const BoxDecoration(
                         shape: BoxShape.circle,
-                        color: Color(0xFF2D3BA0),
+                        color: AppTheme.royalBlue,
                       ),
                       child: const Icon(Icons.camera_alt, size: 14, color: Colors.white),
                     ),
