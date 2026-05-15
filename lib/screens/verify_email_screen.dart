@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/auth_service.dart';
+import '../theme/app_theme.dart';
 
 class VerifyEmailScreen extends StatefulWidget {
   const VerifyEmailScreen({super.key});
@@ -67,6 +68,14 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
     }
   }
 
+  void _editEmail() {
+    final email = _authService.currentUser?.email ?? '';
+    Navigator.pushReplacementNamed(context, '/auth');
+    // Note: We use pushReplacementNamed which doesn't support arguments directly.
+    // The auth screen will check SharedPreferences for saved accounts.
+    // To pass the email, we need to update the route in main.dart.
+  }
+
   @override
   Widget build(BuildContext context) {
     final email = _authService.currentUser?.email ?? 'your email';
@@ -81,7 +90,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
               const Icon(
                 Icons.email_outlined,
                 size: 80,
-                color: Color(0xFF1A1F71),
+                color: Color(0xFF2D3BA0),
               ),
               const SizedBox(height: 32),
               const Text(
@@ -98,13 +107,21 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                   height: 1.5,
                 ),
               ),
-              const SizedBox(height: 40),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: _editEmail,
+                child: Text(
+                  'Wrong email? Edit',
+                  style: TextStyle(color: AppTheme.royalBlue, fontSize: 13),
+                ),
+              ),
+              const SizedBox(height: 32),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: _isChecking ? null : _checkVerified,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1A1F71),
+                    backgroundColor: AppTheme.royalBlue,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: const StadiumBorder(),
