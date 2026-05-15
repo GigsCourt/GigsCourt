@@ -25,6 +25,7 @@ class _ProfileSetupStep3State extends State<ProfileSetupStep3> {
   final MapController _mapController = MapController();
   final TextEditingController _addressController = TextEditingController();
   late LatLng _center;
+  bool _locationReady = false;
   bool _isLoadingLocation = true;
   String? _locationBannerMessage;
   bool _isBannerWarning = false;
@@ -42,6 +43,7 @@ class _ProfileSetupStep3State extends State<ProfileSetupStep3> {
     _addressController.text = widget.initialAddress ?? '';
     _center = widget.initialLocation ?? _lagosFallback;
     if (widget.initialLocation != null) {
+      _locationReady = true;
       _isLoadingLocation = false;
     } else {
       _getCurrentLocation();
@@ -79,14 +81,18 @@ class _ProfileSetupStep3State extends State<ProfileSetupStep3> {
       }
 
       final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      ).timeout(const Duration(seconds: 10));
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10),
+        ),
+      );
 
       if (mounted && !_userHasDraggedMap) {
         _retryTimer?.cancel();
         setState(() {
           _center = LatLng(position.latitude, position.longitude);
           _isLoadingLocation = false;
+          _locationReady = true;
           _locationBannerMessage = null;
         });
         _moveMapToCenter();
@@ -115,6 +121,7 @@ class _ProfileSetupStep3State extends State<ProfileSetupStep3> {
   void _showPermissionDenied() {
     setState(() {
       _isLoadingLocation = false;
+      _locationReady = false;
       _locationBannerMessage = 'Location access was denied. Showing default area. Drag the map to set your workspace.';
       _isBannerWarning = true;
       _permissionDeniedPermanently = false;
@@ -124,6 +131,7 @@ class _ProfileSetupStep3State extends State<ProfileSetupStep3> {
   void _showPermissionPermanentlyDenied() {
     setState(() {
       _isLoadingLocation = false;
+      _locationReady = false;
       _locationBannerMessage = 'Location access was denied. Showing default area. Drag the map to set your workspace.';
       _isBannerWarning = true;
       _permissionDeniedPermanently = true;
@@ -147,6 +155,7 @@ class _ProfileSetupStep3State extends State<ProfileSetupStep3> {
     } else {
       setState(() {
         _isLoadingLocation = false;
+        _locationReady = false;
         _locationBannerMessage = 'Location unavailable. Showing default area. Drag the map to set your workspace.';
         _isBannerWarning = true;
       });
@@ -205,7 +214,6 @@ class _ProfileSetupStep3State extends State<ProfileSetupStep3> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // Location banner
         if (_locationBannerMessage != null)
           Container(
             width: double.infinity,
@@ -229,27 +237,10 @@ class _ProfileSetupStep3State extends State<ProfileSetupStep3> {
               ],
             ),
           ),
-        // Map — takes up most of the screen
         Expanded(
           flex: 5,
-          child: _isLoadingLocation
-              ? Container(
-                  color: Theme.of(context).scaffoldBackgroundColor,
-                  child: const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        CircularProgressIndicator(),
-                        SizedBox(height: 16),
-                        Text(
-                          'Getting your location...',
-                          style: TextStyle(color: Color(0xFF6B7280), fontSize: 13),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              : Stack(
+          child: _locationReady
+              ? Stack(
                   children: [
                     FlutterMap(
                       mapController: _mapController,
@@ -281,9 +272,24 @@ class _ProfileSetupStep3State extends State<ProfileSetupStep3> {
                       ),
                     ),
                   ],
+                )
+              : Container(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  child: const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 16),
+                        Text(
+                          'Getting your location...',
+                          style: TextStyle(color: Color(0xFF6B7280), fontSize: 13),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
         ),
-        // Address field — compact below map
         Expanded(
           flex: 1,
           child: SingleChildScrollView(
@@ -291,15 +297,10 @@ class _ProfileSetupStep3State extends State<ProfileSetupStep3> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Set Your Workspace',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
+                const Text('Set Your Workspace', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
-                Text(
-                  'Drag the map to center the pin on your workspace.',
-                  style: TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
-                ),
+                Text('Drag the map to center the pin on your workspace.',
+                    style: TextStyle(fontSize: 13, color: Color(0xFF6B7280))),
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _addressController,
@@ -311,10 +312,8 @@ class _ProfileSetupStep3State extends State<ProfileSetupStep3> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  'This helps clients find you nearby. You can describe your location in your own words.',
-                  style: TextStyle(fontSize: 11, color: Color(0xFF6B7280)),
-                ),
+                Text('This helps clients find you nearby. You can describe your location in your own words.',
+                    style: TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
               ],
             ),
           ),
