@@ -404,7 +404,10 @@ class _GigListState extends State<_GigList> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        showError(context, e);
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -423,7 +426,10 @@ class _GigListState extends State<_GigList> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoadingMore = false);
+      if (mounted) {
+        showError(context, e);
+        setState(() => _isLoadingMore = false);
+      }
     }
   }
 
@@ -512,7 +518,10 @@ class _ReviewsContentState extends State<_ReviewsContent> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        showError(context, e);
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -530,7 +539,10 @@ class _ReviewsContentState extends State<_ReviewsContent> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoadingMore = false);
+      if (mounted) {
+        showError(context, e);
+        setState(() => _isLoadingMore = false);
+      }
     }
   }
 
