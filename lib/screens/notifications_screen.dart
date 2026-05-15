@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import '../utils/error_handler.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -60,7 +61,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        showError(context, e);
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -86,7 +90,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           _hasMore = snapshot.docs.length >= _pageSize;
         });
       }
-    } catch (e) {}
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
   }
 
   Future<void> _markAsRead(String id) async {
