@@ -65,6 +65,7 @@ class ChatService {
       'lastMessage': preview,
       'lastMessageTime': FieldValue.serverTimestamp(),
       'lastMessageSenderId': _currentUid,
+      'readBy': [_currentUid],
     }, SetOptions(merge: true));
   }
 
@@ -88,9 +89,18 @@ class ChatService {
         .where('read', isEqualTo: false)
         .get();
 
+    if (messages.docs.isEmpty) return;
+
+    final batch = _firestore.batch();
     for (final doc in messages.docs) {
-      await doc.reference.update({'read': true});
+      batch.update(doc.reference, {'read': true});
     }
+    await batch.commit();
+
+    // Mark chat as read by current user
+    await _firestore.collection('chats').doc(chatId).set({
+      'readBy': FieldValue.arrayUnion([_currentUid]),
+    }, SetOptions(merge: true));
   }
 
   Future<void> deleteMessage(String chatId, String messageId, bool isOwnMessage) async {
