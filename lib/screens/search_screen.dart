@@ -59,7 +59,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Future<void> _getLocation() async {
     try {
-      final location = await _locationService.getCurrentLocation();
+      final location = await _locationService.getLocation();
       if (mounted) {
         setState(() {
           _userLocation = location;
