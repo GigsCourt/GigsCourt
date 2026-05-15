@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../utils/error_handler.dart';
 
 class GigBanner extends StatelessWidget {
   final String chatId;
@@ -27,6 +28,7 @@ class GigBanner extends StatelessWidget {
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance.collection('chats').doc(chatId).snapshots(),
       builder: (context, chatSnapshot) {
+        if (chatSnapshot.hasError) return const SizedBox.shrink();
         if (!chatSnapshot.hasData) return const SizedBox.shrink();
 
         final chatData = chatSnapshot.data?.data();
@@ -39,14 +41,15 @@ class GigBanner extends StatelessWidget {
         return StreamBuilder<DocumentSnapshot>(
           stream: FirebaseFirestore.instance.collection('gigs').doc(gigId).snapshots(),
           builder: (context, gigSnapshot) {
+            if (gigSnapshot.hasError) return _buildNoGig(context);
             if (!gigSnapshot.hasData || !gigSnapshot.data!.exists) {
               return _buildNoGig(context);
             }
 
             final gig = gigSnapshot.data!.data()!;
             final gigData = gig as Map<String, dynamic>;
-final status = gigData['status'] ?? 'pending';
-final providerId = gigData['providerId'];
+            final status = gigData['status'] ?? 'pending';
+            final providerId = gigData['providerId'];
 
             if (status == 'completed' || status == 'cancelled') {
               return _buildNoGig(context);
