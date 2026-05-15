@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../services/image_service.dart';
+import '../theme/app_theme.dart';
 
 class ProfileSetupStep1 extends StatefulWidget {
   final String? initialName;
@@ -115,23 +116,23 @@ class _ProfileSetupStep1State extends State<ProfileSetupStep1> {
         padding: const EdgeInsets.symmetric(horizontal: 24),
         child: Column(
           children: [
-            const SizedBox(height: 24),
+            const SizedBox(height: 12),
             // Progress hint
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: Theme.of(context).cardColor,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.info_outline, size: 18, color: Color(0xFF6B7280)),
+                  const Icon(Icons.info_outline, size: 16, color: Color(0xFF6B7280)),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       'Complete your profile to be discoverable to clients near you',
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 11,
                         color: Theme.of(context).textTheme.bodySmall?.color,
                       ),
                     ),
@@ -139,20 +140,20 @@ class _ProfileSetupStep1State extends State<ProfileSetupStep1> {
                 ],
               ),
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 16),
             // Photo picker
             GestureDetector(
               onTap: _showPhotoSheet,
               child: Stack(
                 children: [
                   Container(
-                    width: 88,
-                    height: 88,
+                    width: 72,
+                    height: 72,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: Theme.of(context).cardColor,
                       border: Border.all(
-                        color: _photo != null ? const Color(0xFF4CAF50) : const Color(0xFF1A1F71),
+                        color: _photo != null ? const Color(0xFF4CAF50) : AppTheme.royalBlue,
                         width: 2,
                       ),
                       image: _photo != null
@@ -165,7 +166,7 @@ class _ProfileSetupStep1State extends State<ProfileSetupStep1> {
                     child: _photo == null
                         ? const Icon(
                             Icons.person,
-                            size: 40,
+                            size: 32,
                             color: Color(0xFF6B7280),
                           )
                         : null,
@@ -174,27 +175,27 @@ class _ProfileSetupStep1State extends State<ProfileSetupStep1> {
                     bottom: 0,
                     right: 0,
                     child: Container(
-                      width: 28,
-                      height: 28,
+                      width: 24,
+                      height: 24,
                       decoration: const BoxDecoration(
                         shape: BoxShape.circle,
-                        color: Color(0xFF1A1F71),
+                        color: Color(0xFF2D3BA0),
                       ),
-                      child: const Icon(Icons.camera_alt, size: 16, color: Colors.white),
+                      child: const Icon(Icons.camera_alt, size: 14, color: Colors.white),
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
               'Add a profile photo',
               style: TextStyle(
-                fontSize: 12,
+                fontSize: 11,
                 color: Theme.of(context).textTheme.bodySmall?.color,
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
             // Name field
             TextFormField(
               controller: _nameController,
@@ -202,6 +203,7 @@ class _ProfileSetupStep1State extends State<ProfileSetupStep1> {
               decoration: const InputDecoration(
                 labelText: 'Full Name / Business Name *',
                 hintText: 'e.g. John Doe Electrical Services',
+                isDense: true,
               ),
               validator: (value) {
                 if (value == null || value.trim().isEmpty) {
@@ -210,15 +212,7 @@ class _ProfileSetupStep1State extends State<ProfileSetupStep1> {
                 return null;
               },
             ),
-            const SizedBox(height: 4),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Clients will see this name when they find your services',
-                style: TextStyle(fontSize: 11, color: Theme.of(context).textTheme.bodySmall?.color),
-              ),
-            ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 12),
             // Phone field
             TextFormField(
               controller: _phoneController,
@@ -227,39 +221,24 @@ class _ProfileSetupStep1State extends State<ProfileSetupStep1> {
               decoration: const InputDecoration(
                 labelText: 'Phone Number (optional)',
                 hintText: 'e.g. +234 800 000 0000',
+                isDense: true,
               ),
             ),
-            const SizedBox(height: 4),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Helps clients reach you faster — you can hide this later',
-                style: TextStyle(fontSize: 11, color: Theme.of(context).textTheme.bodySmall?.color),
-              ),
-            ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 12),
             // Bio field
             TextFormField(
               controller: _bioController,
               onChanged: (_) => _notifyParent(),
-              maxLines: null,
-              minLines: 3,
+              minLines: 1,
+              maxLines: 2,
               textCapitalization: TextCapitalization.sentences,
               decoration: const InputDecoration(
                 labelText: 'Bio (optional)',
-                hintText: 'Tell clients about your experience, specialties, and what makes you great at your work...',
+                hintText: 'Tell clients about your experience...',
                 alignLabelWithHint: true,
+                isDense: true,
               ),
             ),
-            const SizedBox(height: 4),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'A good bio builds trust and helps you stand out',
-                style: TextStyle(fontSize: 11, color: Theme.of(context).textTheme.bodySmall?.color),
-              ),
-            ),
-            const SizedBox(height: 32),
           ],
         ),
       ),
