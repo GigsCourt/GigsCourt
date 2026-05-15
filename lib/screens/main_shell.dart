@@ -30,6 +30,9 @@ class _MainShellState extends State<MainShell> {
       const ChatListScreen(),
       const ProfileScreen(),
     ]);
+    if (_isAdmin) {
+      _screens.add(const AdminScreen());
+    }
     _listenToUnreadChats();
   }
 
@@ -60,13 +63,8 @@ class _MainShellState extends State<MainShell> {
       _TabItem(icon: Icons.chat_bubble_outlined, activeIcon: Icons.chat_bubble, index: 2, badge: _unreadChats),
       _TabItem(icon: Icons.person_outlined, activeIcon: Icons.person, index: 3),
       if (_isAdmin)
-        _TabItem(icon: Icons.shield_outlined, activeIcon: Icons.shield, index: _screens.length),
+        _TabItem(icon: Icons.shield_outlined, activeIcon: Icons.shield, index: 4),
     ];
-
-    // Add admin screen if admin
-    if (_isAdmin && _screens.length == 4) {
-      _screens.add(const AdminScreen());
-    }
 
     return Scaffold(
       body: IndexedStack(
