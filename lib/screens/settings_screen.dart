@@ -56,7 +56,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _isLoading = false;
         });
       }
-    }} catch (e) {
+   } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
         showError(context, e);
