@@ -97,7 +97,13 @@ class GigsCourtApp extends StatelessWidget {
       home: const SplashScreen(),
       routes: {
         '/onboarding': (context) => const OnboardingScreen(),
-        '/auth': (context) => const AuthScreen(),
+        '/auth': (context) {
+  final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+  return AuthScreen(
+    prefilledEmail: args?['email'] as String?,
+    startOnSignup: args?['startOnSignup'] as bool? ?? false,
+  );
+},
         '/verify-email': (context) => const VerifyEmailScreen(),
         '/main': (context) => const MainShell(),
         '/profile-setup': (context) => const ProfileSetupScreen(),
