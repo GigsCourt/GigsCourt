@@ -223,6 +223,27 @@ class _EditServicesSheetState extends State<_EditServicesSheet> {
     HapticFeedback.mediumImpact();
     setState(() => _isSaving = true);
     try {
+      final oldServices = List<String>.from(widget.currentServices);
+      final newServices = List<String>.from(_selectedServices);
+
+      // Decrement removed services
+      for (final slug in oldServices) {
+        if (!newServices.contains(slug)) {
+          await FirebaseFirestore.instance.collection('metadata').doc('service_counts').set({
+            slug: FieldValue.increment(-1),
+          }, SetOptions(merge: true));
+        }
+      }
+
+      // Increment added services
+      for (final slug in newServices) {
+        if (!oldServices.contains(slug)) {
+          await FirebaseFirestore.instance.collection('metadata').doc('service_counts').set({
+            slug: FieldValue.increment(1),
+          }, SetOptions(merge: true));
+        }
+      }
+
       await FirebaseFirestore.instance.collection('profiles').doc(widget.uid).update({
         'services': _selectedServices,
         'updatedAt': FieldValue.serverTimestamp(),
