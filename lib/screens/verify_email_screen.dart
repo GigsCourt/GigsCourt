@@ -69,12 +69,16 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
   }
 
   void _editEmail() {
-    final email = _authService.currentUser?.email ?? '';
-    Navigator.pushReplacementNamed(context, '/auth');
-    // Note: We use pushReplacementNamed which doesn't support arguments directly.
-    // The auth screen will check SharedPreferences for saved accounts.
-    // To pass the email, we need to update the route in main.dart.
-  }
+  final email = _authService.currentUser?.email ?? '';
+  Navigator.pushReplacementNamed(
+    context,
+    '/auth',
+    arguments: {
+      'email': email,
+      'startOnSignup': true,
+    },
+  );
+}
 
   @override
   Widget build(BuildContext context) {
