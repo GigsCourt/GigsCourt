@@ -30,7 +30,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         email,
-        amount: amount * 100, // Paystack uses kobo (amount in Naira × 100)
+        amount: amount * 100,
         metadata: {
           userId,
           ...metadata,
@@ -45,6 +45,7 @@ serve(async (req) => {
         success: true,
         accessCode: data.data.access_code,
         reference: data.data.reference,
+        authorizationUrl: data.data.authorization_url,
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
