@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'notifications_screen.dart';
 import '../services/auth_service.dart';
 import '../services/location_service.dart';
@@ -24,15 +26,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final HomeService _homeService = HomeService();
   final AuthService _authService = AuthService();
 
-  // Header state
   bool _isCollapsed = false;
 
-  // Location state
   LatLng? _userLocation;
   bool _locationDenied = false;
-  bool _isLoadingLocation = true;
 
-  // Data state
   List<ProviderCardData> _trendingProviders = [];
   List<ProviderCardData> _nearbyProviders = [];
   bool _trendingHasMore = true;
@@ -40,13 +38,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String? _trendingCursor;
   String? _nearbyCursor;
   bool _isInitialLoad = true;
-  bool _isRefreshing = false;
 
-  // Notification badge
   int _unreadCount = 0;
   StreamSubscription? _notificationSubscription;
-
-  // Location stream
   StreamSubscription<LatLng>? _locationStreamSubscription;
 
   @override
@@ -74,34 +68,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _initialize() async {
-    await _getLocation();
-    if (!_locationDenied && _userLocation != null) {
-      await _loadCachedData();
-      _listenToNotifications();
-      _listenToLocationChanges();
-      _fetchFreshData();
-    }
-  }
+    // Show cached data immediately
+    await _loadCachedData();
+    _listenToNotifications();
 
-  Future<void> _getLocation() async {
+    // Get fresh location
     try {
-      final location = await _locationService.getCurrentLocation();
-      setState(() {
-        _userLocation = location;
-        _locationDenied = false;
-        _isLoadingLocation = false;
-      });
-      _locationService.updateLastFetch(location);
+      _userLocation = await _locationService.refreshLocation();
+      if (mounted) {
+        setState(() => _locationDenied = false);
+        _listenToLocationChanges();
+        _fetchFreshData();
+      }
     } on LocationPermissionException {
-      setState(() {
-        _locationDenied = true;
-        _isLoadingLocation = false;
-      });
+      if (mounted) setState(() => _locationDenied = true);
     } catch (e) {
-      setState(() {
-        _locationDenied = true;
-        _isLoadingLocation = false;
-      });
+      if (mounted) setState(() => _locationDenied = true);
     }
   }
 
@@ -109,7 +91,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final cachedTrending = await _homeService.getCachedTrending();
     final cachedNearby = await _homeService.getCachedNearby();
 
-    if (cachedTrending.isNotEmpty || cachedNearby.isNotEmpty) {
+    if (mounted && (cachedTrending.isNotEmpty || cachedNearby.isNotEmpty)) {
       setState(() {
         _trendingProviders = cachedTrending;
         _nearbyProviders = cachedNearby;
@@ -128,19 +110,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         .where('read', isEqualTo: false)
         .snapshots()
         .listen((snapshot) {
-      if (mounted) {
-        setState(() => _unreadCount = snapshot.docs.length);
-      }
+      if (mounted) setState(() => _unreadCount = snapshot.docs.length);
     });
   }
 
   void _listenToLocationChanges() {
-    _locationStreamSubscription = _locationService.locationStream.listen((newLocation) async {
-      final shouldRefresh = await _locationService.shouldRefresh(newLocation);
-      if (shouldRefresh && mounted) {
+    _locationStreamSubscription = _locationService.locationStream.listen((newLocation) {
+      if (mounted) {
         _userLocation = newLocation;
         _fetchFreshData();
-        _locationService.updateLastFetch(newLocation);
       }
     });
   }
@@ -149,12 +127,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (_userLocation == null) return;
 
     try {
-      final trendingResult = await _homeService.fetchTrending(
-        userLocation: _userLocation!,
-      );
-      final nearbyResult = await _homeService.fetchNearby(
-        userLocation: _userLocation!,
-      );
+      final trendingResult = await _homeService.fetchTrending(userLocation: _userLocation!);
+      final nearbyResult = await _homeService.fetchNearby(userLocation: _userLocation!);
 
       if (mounted) {
         setState(() {
@@ -165,12 +139,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _nearbyCursor = nearbyResult.nextCursor;
           _nearbyHasMore = nearbyResult.hasMore;
           _isInitialLoad = false;
-          _isRefreshing = false;
         });
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _isRefreshing = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Could not load providers: $e')),
         );
@@ -179,15 +151,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _backgroundRefresh() async {
-    if (_userLocation == null) return;
     try {
-      await _fetchFreshData();
+      _userLocation = await _locationService.refreshLocation();
+      if (mounted) _fetchFreshData();
     } catch (_) {}
   }
 
   Future<void> _onRefresh() async {
     HapticFeedback.mediumImpact();
-    setState(() => _isRefreshing = true);
+    try {
+      _userLocation = await _locationService.refreshLocation();
+    } catch (_) {}
     _trendingCursor = null;
     _nearbyCursor = null;
     await _fetchFreshData();
@@ -204,18 +178,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<PaginatedResult> _onTrendingFetchMore(String? cursor) async {
     if (_userLocation == null) return PaginatedResult(providers: [], nextCursor: null, hasMore: false);
-    return _homeService.fetchTrending(
-      userLocation: _userLocation!,
-      cursor: cursor,
-    );
+    return _homeService.fetchTrending(userLocation: _userLocation!, cursor: cursor);
   }
 
   Future<PaginatedResult> _onNearbyFetchMore(String? cursor) async {
     if (_userLocation == null) return PaginatedResult(providers: [], nextCursor: null, hasMore: false);
-    return _homeService.fetchNearby(
-      userLocation: _userLocation!,
-      cursor: cursor,
-    );
+    return _homeService.fetchNearby(userLocation: _userLocation!, cursor: cursor);
   }
 
   void _onProviderTap(ProviderCardData provider) {
@@ -229,10 +197,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _openLocationSettings() {
-    // TODO: Open device location settings using url_launcher
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Please enable location in Settings')),
-    );
+    if (Platform.isIOS) {
+      launchUrl(Uri.parse('app-settings:'));
+    } else {
+      launchUrl(Uri.parse('android.settings.LOCATION_SOURCE_SETTINGS'));
+    }
   }
 
   @override
@@ -253,10 +222,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           children: [
             const Icon(Icons.location_off, size: 64, color: Color(0xFF6B7280)),
             const SizedBox(height: 24),
-            const Text(
-              'Location Required',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
+            const Text('Location Required', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
             const Text(
               'GigsCourt needs your location to show providers near you.\nPlease enable location services to continue.',
@@ -265,16 +231,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
             const SizedBox(height: 24),
             ElevatedButton(
-              onPressed: () {
-                _getLocation();
+              onPressed: () async {
+                try {
+                  _userLocation = await _locationService.refreshLocation();
+                  if (mounted) {
+                    setState(() => _locationDenied = false);
+                    _listenToLocationChanges();
+                    _fetchFreshData();
+                  }
+                } catch (_) {}
               },
               child: const Text('Try Again'),
             ),
             const SizedBox(height: 12),
-            TextButton(
-              onPressed: _openLocationSettings,
-              child: const Text('Open Settings'),
-            ),
+            TextButton(onPressed: _openLocationSettings, child: const Text('Open Settings')),
           ],
         ),
       ),
@@ -284,17 +254,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Widget _buildContent() {
     return Column(
       children: [
-        // Collapsing Header
         AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          padding: EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: _isCollapsed ? 10 : 20,
-          ),
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: _isCollapsed ? 10 : 20),
           child: _isCollapsed ? _buildCollapsedHeader() : _buildExpandedHeader(),
         ),
-        const Divider(height: 1, thickness: 0.5),
-        // Content
+        // Divider only when collapsed
+        if (_isCollapsed) const Divider(height: 1, thickness: 0.5),
         Expanded(
           child: _isInitialLoad
               ? _buildShimmer()
@@ -328,18 +294,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
                 ),
         ),
-        // Scroll to top FAB
         if (_scrollController.hasClients && _scrollController.offset > 200)
           Positioned(
             right: 16,
             bottom: 16,
             child: FloatingActionButton.small(
               onPressed: () {
-                _scrollController.animateTo(
-                  0,
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeInOut,
-                );
+                _scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
               },
               backgroundColor: const Color(0xFF1A1F71),
               child: const Icon(Icons.keyboard_arrow_up, color: Colors.white),
@@ -356,14 +317,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         const Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Gigs',
-              style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, height: 1.1),
-            ),
-            Text(
-              'Court',
-              style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, height: 1.1),
-            ),
+            Text('Gigs', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, height: 1.1)),
+            Text('Court', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, height: 1.1)),
           ],
         ),
         _buildBellIcon(),
@@ -376,10 +331,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         const SizedBox(width: 24),
-        const Text(
-          'GigsCourt',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
+        const Text('GigsCourt', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         _buildBellIcon(),
       ],
     );
@@ -399,21 +351,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
         if (_unreadCount > 0)
           Positioned(
-            right: 6,
-            top: 6,
+            right: 6, top: 6,
             child: Container(
               padding: const EdgeInsets.all(4),
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                color: Color(0xFF1A1F71),
-              ),
+              decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF1A1F71)),
               child: Text(
                 _unreadCount > 99 ? '99+' : '$_unreadCount',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
               ),
             ),
           ),
@@ -422,8 +366,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildShimmer() {
-    return const Center(
-      child: CircularProgressIndicator(),
-    );
+    return const Center(child: CircularProgressIndicator());
   }
 }
