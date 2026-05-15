@@ -17,7 +17,6 @@ class ProviderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Landscape for Trending (width 2.5x height), Portrait for Nearby
     final aspectRatio = isTrending ? 2.5 : 0.75;
 
     return GestureDetector(
@@ -32,7 +31,6 @@ class ProviderCard extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // Full-bleed photo
               CachedNetworkImage(
                 imageUrl: provider.photoUrl,
                 fit: BoxFit.cover,
@@ -50,7 +48,6 @@ class ProviderCard extends StatelessWidget {
                   child: const Icon(Icons.person, size: 32, color: Color(0xFF6B7280)),
                 ),
               ),
-              // Gradient overlay from middle to bottom
               Positioned.fill(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
@@ -67,7 +64,6 @@ class ProviderCard extends StatelessWidget {
                   ),
                 ),
               ),
-              // Content
               Positioned(
                 left: 10,
                 right: 10,
@@ -76,25 +72,26 @@ class ProviderCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Active dot + Name
                     Row(
                       children: [
-                        Container(
-                          width: 6,
-                          height: 6,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: const Color(0xFF4CAF50),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xFF4CAF50).withAlpha(77),
-                                blurRadius: 4,
-                                spreadRadius: 1,
-                              ),
-                            ],
+                        if (provider.gigCount7Days >= 1)
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: const Color(0xFF4CAF50),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFF4CAF50).withAlpha(77),
+                                  blurRadius: 4,
+                                  spreadRadius: 1,
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 6),
+                        if (provider.gigCount7Days >= 1)
+                          const SizedBox(width: 6),
                         Expanded(
                           child: Text(
                             provider.name,
@@ -110,7 +107,6 @@ class ProviderCard extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 4),
-                    // Star + rating
                     Row(
                       children: [
                         const Icon(Icons.star, size: 11, color: Colors.amber),
@@ -125,7 +121,6 @@ class ProviderCard extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 3),
-                    // Services
                     Text(
                       _formatServices(provider.services),
                       maxLines: 1,
@@ -136,7 +131,6 @@ class ProviderCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 3),
-                    // Distance + gigs
                     Text(
                       '${_formatDistance(provider.distance)} · ${provider.gigCount30Days} gigs this month',
                       style: TextStyle(
