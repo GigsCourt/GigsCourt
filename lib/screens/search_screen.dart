@@ -29,7 +29,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   // Search state
   String _searchQuery = '';
-  double _radiusKm = 10;
+  double _radiusKm = 1;
   bool _isMapView = true;
   List<String> _popularServices = [];
   List<ProviderCardData> _results = [];
