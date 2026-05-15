@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:latlong2/latlong.dart';
+import '../theme/app_theme.dart';
 
 class HomeService {
   final SupabaseClient _supabase = Supabase.instance.client;
@@ -11,6 +12,8 @@ class HomeService {
   static const String _trendingCacheKey = 'home_trending_cache';
   static const String _nearbyCacheKey = 'home_nearby_cache';
   static const int _pageSize = 10;
+  static const int _nearbyMaxResults = 50;
+  static const int _trendingMaxResults = 50;
 
   Future<List<ProviderCardData>> getCachedTrending() async {
     return _getCached(_trendingCacheKey);
@@ -28,7 +31,8 @@ class HomeService {
       userLocation: userLocation,
       cursor: cursor,
       cacheKey: _trendingCacheKey,
-      sortForTrending: true,
+      maxResults: _trendingMaxResults,
+      filterTrending: true,
     );
   }
 
@@ -40,7 +44,8 @@ class HomeService {
       userLocation: userLocation,
       cursor: cursor,
       cacheKey: _nearbyCacheKey,
-      sortForTrending: false,
+      maxResults: _nearbyMaxResults,
+      filterTrending: false,
     );
   }
 
@@ -48,13 +53,15 @@ class HomeService {
     required LatLng userLocation,
     String? cursor,
     required String cacheKey,
-    required bool sortForTrending,
+    required int maxResults,
+    required bool filterTrending,
   }) async {
     final supabaseResult = await _supabase.rpc('get_nearby_profiles', params: {
       'user_lat': userLocation.latitude,
       'user_lng': userLocation.longitude,
       'p_cursor': cursor,
       'p_limit': _pageSize,
+      'p_max_results': maxResults,
     });
 
     if (supabaseResult == null || (supabaseResult as List).isEmpty) {
@@ -72,12 +79,12 @@ class HomeService {
     }
 
     final hasMore = rows.length > _pageSize;
-    final nextCursor = hasMore ? uids[_pageSize - 1] : null;
     final fetchUids = hasMore ? uids.sublist(0, _pageSize) : uids;
+    final nextCursor = hasMore ? fetchUids.last : null;
 
     final firestoreData = await _batchReadProfiles(fetchUids);
 
-    final providers = _mergeAndSort(firestoreData, distances, userLocation, sortForTrending);
+    final providers = _mergeAndSort(firestoreData, distances, userLocation, filterTrending);
 
     if (cursor == null && providers.isNotEmpty) {
       _cacheProviders(cacheKey, providers);
@@ -112,7 +119,7 @@ class HomeService {
     Map<String, Map<String, dynamic>> firestoreData,
     Map<String, double> distances,
     LatLng userLocation,
-    bool sortForTrending,
+    bool filterTrending,
   ) {
     final providers = <ProviderCardData>[];
 
@@ -145,18 +152,23 @@ class HomeService {
       ));
     }
 
-    if (sortForTrending) {
+    if (filterTrending) {
+      // Trending: only show active providers with reviews
       providers.removeWhere((p) => p.gigCount7Days < 1 || p.reviewCount < 1);
+      // Sort: distance first, then activity, then rating, then total gigs
       providers.sort((a, b) {
-        final velocityCompare = b.gigCount7Days.compareTo(a.gigCount7Days);
-        if (velocityCompare != 0) return velocityCompare;
         final distanceCompare = a.distance.compareTo(b.distance);
         if (distanceCompare != 0) return distanceCompare;
+        final aActive = a.gigCount7Days >= 1 || a.gigCount30Days >= 3;
+        final bActive = b.gigCount7Days >= 1 || b.gigCount30Days >= 3;
+        final activityCompare = (bActive ? 1 : 0).compareTo(aActive ? 1 : 0);
+        if (activityCompare != 0) return activityCompare;
         final ratingCompare = b.rating.compareTo(a.rating);
         if (ratingCompare != 0) return ratingCompare;
         return b.gigCount.compareTo(a.gigCount);
       });
     } else {
+      // Nearby: distance first, then activity, then rating, then total gigs
       providers.sort((a, b) {
         final distanceCompare = a.distance.compareTo(b.distance);
         if (distanceCompare != 0) return distanceCompare;
@@ -174,9 +186,13 @@ class HomeService {
   }
 
   Future<void> _cacheProviders(String key, List<ProviderCardData> providers) async {
-    final prefs = await SharedPreferences.getInstance();
-    final jsonList = providers.map((p) => jsonEncode(p.toJson())).toList();
-    await prefs.setStringList(key, jsonList);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonList = providers.map((p) => jsonEncode(p.toJson())).toList();
+      await prefs.setStringList(key, jsonList);
+    } catch (_) {
+      // Silently fail — cache is non-critical
+    }
   }
 
   Future<List<ProviderCardData>> _getCached(String key) async {
