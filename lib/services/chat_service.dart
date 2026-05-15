@@ -106,11 +106,25 @@ class ChatService {
     final user = _auth.currentUser;
     if (user == null) return;
 
+    // Check for existing pending gig
+    final existing = await _firestore
+        .collection('chats')
+        .doc(chatId)
+        .get();
+    final existingGigId = existing.data()?['gigId'] as String?;
+    if (existingGigId != null) {
+      final gigDoc = await _firestore.collection('gigs').doc(existingGigId).get();
+      if (gigDoc.exists && (gigDoc.data()?['status'] ?? '') == 'pending') {
+        throw Exception('A pending gig already exists');
+      }
+    }
+
     final profile = await _firestore.collection('profiles').doc(user.uid).get();
     final credits = (profile.data()?['credits'] ?? 0).toInt();
     if (credits < 1) throw Exception('Insufficient credits');
 
-    await _firestore.collection('gigs').add({
+    // Create gig
+    final gigRef = await _firestore.collection('gigs').add({
       'providerId': user.uid,
       'clientId': otherUid,
       'service': service,
@@ -118,10 +132,10 @@ class ChatService {
       'createdAt': FieldValue.serverTimestamp(),
     });
 
-    final gigDoc = await _firestore.collection('gigs').where('providerId', isEqualTo: user.uid).where('clientId', isEqualTo: otherUid).where('status', isEqualTo: 'pending').orderBy('createdAt', descending: true).limit(1).get();
-    if (gigDoc.docs.isNotEmpty) {
-      await _firestore.collection('chats').doc(chatId).set({'gigId': gigDoc.docs.first.id}, SetOptions(merge: true));
-    }
+    // Link gig to chat immediately (use the doc ref ID directly)
+    await _firestore.collection('chats').doc(chatId).set({
+      'gigId': gigRef.id,
+    }, SetOptions(merge: true));
   }
 
   Future<void> submitReview(String gigId, int rating, String? text) async {
