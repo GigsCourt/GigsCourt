@@ -13,6 +13,7 @@ import '../services/chat_service.dart';
 import '../services/image_service.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/gig_banner.dart';
+import '../utils/error_handler.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final String otherUid;
@@ -63,15 +64,19 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   }
 
   Future<void> _loadProfiles() async {
-    final otherDoc = await _firestore.collection('profiles').doc(widget.otherUid).get();
-    final myDoc = await _firestore.collection('profiles').doc(FirebaseAuth.instance.currentUser?.uid ?? '').get();
-    if (mounted) {
-      setState(() {
-        _otherProfile = otherDoc.data();
-        _myProfile = myDoc.data();
-      });
+    try {
+      final otherDoc = await _firestore.collection('profiles').doc(widget.otherUid).get();
+      final myDoc = await _firestore.collection('profiles').doc(FirebaseAuth.instance.currentUser?.uid ?? '').get();
+      if (mounted) {
+        setState(() {
+          _otherProfile = otherDoc.data();
+          _myProfile = myDoc.data();
+        });
+      }
+      _chatService.markAsRead(_chatId);
+    } catch (e) {
+      if (mounted) showError(context, e);
     }
-    _chatService.markAsRead(_chatId);
   }
 
   void _onTextChanged(String text) {
@@ -99,7 +104,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       await _chatService.sendMessage(_chatId, text);
       _scrollToBottom();
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to send: $e')));
+      if (mounted) showError(context, e);
     }
   }
 
