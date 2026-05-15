@@ -238,7 +238,6 @@ class _ProfileSetupStep3State extends State<ProfileSetupStep3> {
             ),
           ),
         Expanded(
-          flex: 5,
           child: _locationReady
               ? Stack(
                   children: [
@@ -271,6 +270,54 @@ class _ProfileSetupStep3State extends State<ProfileSetupStep3> {
                         ),
                       ),
                     ),
+                    Positioned(
+                      top: 8,
+                      left: 8,
+                      right: 8,
+                      child: Material(
+                        elevation: 4,
+                        borderRadius: BorderRadius.circular(12),
+                        color: Theme.of(context).scaffoldBackgroundColor.withAlpha(240),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Describe your workspace location',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  color: Theme.of(context).textTheme.bodyLarge?.color,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Drag the map to place the pin, then add details.',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: Theme.of(context).textTheme.bodySmall?.color,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              TextFormField(
+                                controller: _addressController,
+                                onChanged: (_) => _notifyParent(),
+                                maxLines: 2,
+                                style: const TextStyle(fontSize: 13),
+                                decoration: const InputDecoration(
+                                  hintText: 'Address or nearby landmark...',
+                                  border: InputBorder.none,
+                                  isDense: true,
+                                  contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 )
               : Container(
@@ -289,34 +336,6 @@ class _ProfileSetupStep3State extends State<ProfileSetupStep3> {
                     ),
                   ),
                 ),
-        ),
-        Expanded(
-          flex: 1,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Set Your Workspace', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
-                Text('Drag the map to center the pin on your workspace.',
-                    style: TextStyle(fontSize: 13, color: Color(0xFF6B7280))),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _addressController,
-                  onChanged: (_) => _notifyParent(),
-                  maxLines: 2,
-                  decoration: const InputDecoration(
-                    hintText: 'Your workspace address or description...',
-                    alignLabelWithHint: true,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text('This helps clients find you nearby. You can describe your location in your own words.',
-                    style: TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
-              ],
-            ),
-          ),
         ),
       ],
     );
