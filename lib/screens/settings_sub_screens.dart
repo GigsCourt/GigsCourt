@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import '../utils/error_handler.dart';
 
 // Credit History Full Screen
 class CreditHistoryScreen extends StatefulWidget {
@@ -62,7 +63,10 @@ class _CreditHistoryScreenState extends State<CreditHistoryScreen> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        showError(context, e);
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -91,7 +95,10 @@ class _CreditHistoryScreenState extends State<CreditHistoryScreen> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoadingMore = false);
+      if (mounted) {
+        showError(context, e);
+        setState(() => _isLoadingMore = false);
+      }
     }
   }
 
@@ -266,7 +273,7 @@ class _ReportIssueTabState extends State<_ReportIssueTab> {
     } catch (e) {
       HapticFeedback.vibrate();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        showError(context, e);
       }
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
@@ -362,7 +369,10 @@ class _MyTicketsTabState extends State<_MyTicketsTab> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        showError(context, e);
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -389,7 +399,10 @@ class _MyTicketsTabState extends State<_MyTicketsTab> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoadingMore = false);
+      if (mounted) {
+        showError(context, e);
+        setState(() => _isLoading = false);
+      }
     }
   }
 
