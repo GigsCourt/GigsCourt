@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/auth_service.dart';
+import 'settings_sub_screens.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -12,7 +13,7 @@ class AuthScreen extends StatefulWidget {
 
 class _AuthScreenState extends State<AuthScreen> {
   final AuthService _authService = AuthService();
-  bool _isLogin = false;
+  bool _isLogin = true;
   bool _isLoading = false;
 
   final _emailController = TextEditingController();
@@ -54,11 +55,17 @@ class _AuthScreenState extends State<AuthScreen> {
           _emailController.text.trim(),
           _passwordController.text,
         );
-        // Login — email already verified during sign up, check profile
         HapticFeedback.heavyImpact();
         if (mounted) {
           final user = _authService.currentUser;
           if (user != null) {
+            // Reload to get latest email verification status
+            await user.reload();
+            final refreshedUser = _authService.currentUser;
+            if (refreshedUser != null && !refreshedUser.emailVerified) {
+              Navigator.pushReplacementNamed(context, '/verify-email');
+              return;
+            }
             final doc = await FirebaseFirestore.instance
                 .collection('profiles')
                 .doc(user.uid)
@@ -75,7 +82,6 @@ class _AuthScreenState extends State<AuthScreen> {
           _emailController.text.trim(),
           _passwordController.text,
         );
-        // Sign up — email verification required
         HapticFeedback.heavyImpact();
         if (mounted) {
           Navigator.pushReplacementNamed(context, '/verify-email');
@@ -97,43 +103,57 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Future<void> _forgotPassword() async {
     final emailController = TextEditingController();
+    bool isSending = false;
     final result = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 24,
-            right: 24,
-            top: 24,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'Reset Password',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 24,
+                right: 24,
+                top: 24,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
               ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: emailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(
-                  labelText: 'Email',
-                  hintText: 'Enter your email address',
-                ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Reset Password',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(
+                      labelText: 'Email',
+                      hintText: 'Enter your email address',
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: isSending
+                        ? null
+                        : () {
+                            setSheetState(() => isSending = true);
+                            Navigator.pop(context, true);
+                          },
+                    child: isSending
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Text('Send Reset Link'),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context, true);
-                },
-                child: const Text('Send Reset Link'),
-              ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
@@ -194,7 +214,7 @@ class _AuthScreenState extends State<AuthScreen> {
                           child: Container(
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             decoration: BoxDecoration(
-                              color: !_isLogin ? const Color(0xFF1A1F71) : Colors.transparent,
+                              color: !_isLogin ? const Color(0xFF2D3BA0) : Colors.transparent,
                               borderRadius: BorderRadius.circular(30),
                             ),
                             child: Text(
@@ -220,7 +240,7 @@ class _AuthScreenState extends State<AuthScreen> {
                           child: Container(
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             decoration: BoxDecoration(
-                              color: _isLogin ? const Color(0xFF1A1F71) : Colors.transparent,
+                              color: _isLogin ? const Color(0xFF2D3BA0) : Colors.transparent,
                               borderRadius: BorderRadius.circular(30),
                             ),
                             child: Text(
@@ -328,16 +348,30 @@ class _AuthScreenState extends State<AuthScreen> {
                               fontSize: 13,
                               color: Theme.of(context).textTheme.bodyMedium?.color,
                             ),
-                            children: const [
-                              TextSpan(text: 'I agree to the '),
+                            children: [
+                              const TextSpan(text: 'I agree to the '),
                               TextSpan(
                                 text: 'Terms of Service',
-                                style: TextStyle(color: Color(0xFF1A1F71), decoration: TextDecoration.underline),
+                                style: const TextStyle(color: Color(0xFF2D3BA0), decoration: TextDecoration.underline),
+                                recognizer: TapGestureRecognizer()
+                                  ..onTap = () {
+                                    HapticFeedback.lightImpact();
+                                    Navigator.of(context, rootNavigator: true).push(
+                                      MaterialPageRoute(builder: (_) => const LegalScreen()),
+                                    );
+                                  },
                               ),
-                              TextSpan(text: ' and '),
+                              const TextSpan(text: ' and '),
                               TextSpan(
                                 text: 'Privacy Policy',
-                                style: TextStyle(color: Color(0xFF1A1F71), decoration: TextDecoration.underline),
+                                style: const TextStyle(color: Color(0xFF2D3BA0), decoration: TextDecoration.underline),
+                                recognizer: TapGestureRecognizer()
+                                  ..onTap = () {
+                                    HapticFeedback.lightImpact();
+                                    Navigator.of(context, rootNavigator: true).push(
+                                      MaterialPageRoute(builder: (_) => const LegalScreen()),
+                                    );
+                                  },
                               ),
                             ],
                           ),
@@ -352,7 +386,7 @@ class _AuthScreenState extends State<AuthScreen> {
                   child: ElevatedButton(
                     onPressed: _isLoading ? null : _submit,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF4A0E17),
+                      backgroundColor: const Color(0xFF2D3BA0),
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: const StadiumBorder(),
