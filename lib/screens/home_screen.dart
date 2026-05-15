@@ -74,7 +74,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _listenToNotifications();
 
     try {
-      _userLocation = await _locationService.refreshLocation();
+      _userLocation = await _locationService.getLocation();
       if (mounted) {
         setState(() => _locationDenied = false);
         _listenToLocationChanges();
@@ -153,7 +153,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _backgroundRefresh() async {
     try {
-      _userLocation = await _locationService.refreshLocation();
+      _userLocation = await _locationService.getLocation();
       if (mounted) _fetchFreshData();
     } catch (_) {}
   }
@@ -161,7 +161,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _onRefresh() async {
     HapticFeedback.mediumImpact();
     try {
-      _userLocation = await _locationService.refreshLocation();
+      _userLocation = await _locationService.getLocation();
     } catch (_) {}
     _trendingCursor = null;
     _nearbyCursor = null;
@@ -234,7 +234,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ElevatedButton(
               onPressed: () async {
                 try {
-                  _userLocation = await _locationService.refreshLocation();
+                  _userLocation = await _locationService.getLocation();
                   if (mounted) {
                     setState(() => _locationDenied = false);
                     _listenToLocationChanges();
