@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
+import '../theme/app_theme.dart';
 
 class ProfileSetupStep3 extends StatefulWidget {
   final LatLng? initialLocation;
@@ -24,7 +26,10 @@ class ProfileSetupStep3 extends StatefulWidget {
 class _ProfileSetupStep3State extends State<ProfileSetupStep3> {
   final MapController _mapController = MapController();
   final TextEditingController _addressController = TextEditingController();
-  LatLng _center = const LatLng(0, 0);
+  final FocusNode _addressFocusNode = FocusNode();
+  
+  // Fallback to Lagos only if GPS fails completely
+  LatLng _center = const LatLng(6.5244, 3.3792);
   bool _isLoading = true;
   String? _errorMessage;
   bool _mapReady = false;
@@ -44,6 +49,7 @@ class _ProfileSetupStep3State extends State<ProfileSetupStep3> {
   @override
   void dispose() {
     _addressController.dispose();
+    _addressFocusNode.dispose();
     super.dispose();
   }
 
@@ -117,11 +123,15 @@ class _ProfileSetupStep3State extends State<ProfileSetupStep3> {
   Future<void> _reverseGeocode(LatLng point) async {
     try {
       final placemarks = await placemarkFromCoordinates(point.latitude, point.longitude);
-      if (placemarks.isNotEmpty && _addressController.text.isEmpty) {
+      if (placemarks.isNotEmpty) {
         final p = placemarks.first;
-        final address = '${p.street ?? ''}, ${p.locality ?? ''}, ${p.administrativeArea ?? ''}'
-            .replaceAll(RegExp(r'^, |, $|,,+'), '')
-            .trim();
+        final address = [
+          p.street,
+          p.locality,
+          p.administrativeArea,
+          p.country,
+        ].where((s) => s != null && s.isNotEmpty).join(', ');
+
         if (address.isNotEmpty) {
           _addressController.text = address;
           _notifyParent();
@@ -135,8 +145,12 @@ class _ProfileSetupStep3State extends State<ProfileSetupStep3> {
       final newCenter = _mapController.camera.center;
       if (newCenter != _center) {
         _center = newCenter;
+        _reverseGeocode(_center);
         _notifyParent();
       }
+    }
+    if (event is MapEventTap) {
+      FocusScope.of(context).unfocus();
     }
   }
 
@@ -196,30 +210,35 @@ class _ProfileSetupStep3State extends State<ProfileSetupStep3> {
                 )
               : Stack(
                   children: [
-                    FlutterMap(
-                      mapController: _mapController,
-                      options: MapOptions(
-                        initialCenter: _center,
-                        initialZoom: 15.0,
-                        onMapEvent: _onMapEvent,
-                        onMapReady: () {
-                          setState(() => _mapReady = true);
-                          _moveMapToCenter();
-                        },
-                      ),
-                      children: [
-                        TileLayer(
-                          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                          userAgentPackageName: 'com.gigscourt.app',
+                    GestureDetector(
+                      onTap: () {
+                        FocusScope.of(context).unfocus();
+                      },
+                      child: FlutterMap(
+                        mapController: _mapController,
+                        options: MapOptions(
+                          initialCenter: _center,
+                          initialZoom: 15.0,
+                          onMapEvent: _onMapEvent,
+                          onMapReady: () {
+                            setState(() => _mapReady = true);
+                            _moveMapToCenter();
+                          },
                         ),
-                      ],
+                        children: [
+                          TileLayer(
+                            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                            userAgentPackageName: 'com.gigscourt.app',
+                          ),
+                        ],
+                      ),
                     ),
                     const IgnorePointer(
                       child: Center(
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.location_on, size: 44, color: Color(0xFF1A1F71)),
+                            Icon(Icons.location_on, size: 44, color: AppTheme.royalBlue),
                             SizedBox(height: 44),
                           ],
                         ),
@@ -239,17 +258,23 @@ class _ProfileSetupStep3State extends State<ProfileSetupStep3> {
                             mainAxisSize: MainAxisSize.min,
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                'Describe your workspace location',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                  color: Theme.of(context).textTheme.bodyLarge?.color,
-                                ),
+                              Row(
+                                children: [
+                                  Icon(Icons.edit_location_outlined, size: 14, color: AppTheme.royalBlue),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'Workspace Location',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: Theme.of(context).textTheme.bodyLarge?.color,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(height: 2),
+                              const SizedBox(height: 4),
                               Text(
-                                'Drag the map to place the pin, then add details.',
+                                'Drag the map to place the pin on your workspace.',
                                 style: TextStyle(
                                   fontSize: 10,
                                   color: Theme.of(context).textTheme.bodySmall?.color,
@@ -258,14 +283,18 @@ class _ProfileSetupStep3State extends State<ProfileSetupStep3> {
                               const SizedBox(height: 8),
                               TextFormField(
                                 controller: _addressController,
+                                focusNode: _addressFocusNode,
                                 onChanged: (_) => _notifyParent(),
                                 maxLines: 2,
                                 style: const TextStyle(fontSize: 13),
                                 decoration: const InputDecoration(
                                   hintText: 'Address or nearby landmark...',
-                                  border: InputBorder.none,
+                                  hintStyle: TextStyle(fontSize: 12),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.all(Radius.circular(8)),
+                                  ),
                                   isDense: true,
-                                  contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                                 ),
                               ),
                             ],
