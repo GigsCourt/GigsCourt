@@ -1,68 +1,88 @@
 import 'package:geolocator/geolocator.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:latlong2/latlong.dart';
 
 class LocationService {
-  static const String _lastLatKey = 'last_location_lat';
-  static const String _lastLngKey = 'last_location_lng';
   static const double _refreshThresholdMeters = 100.0;
 
-  // Get current GPS position
+  LatLng? _cachedLocation;
+  bool _isFetching = false;
+
+  // Get GPS position — returns cached if available, otherwise fetches fresh
   Future<LatLng> getCurrentLocation() async {
-    final hasPermission = await Geolocator.checkPermission();
+    if (_cachedLocation != null) return _cachedLocation!;
 
-    if (hasPermission == LocationPermission.denied) {
-      final permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        throw LocationPermissionException();
+    return refreshLocation();
+  }
+
+  // Force a fresh GPS fetch
+  Future<LatLng> refreshLocation() async {
+    if (_isFetching) {
+      // If already fetching, wait briefly for it to complete
+      for (int i = 0; i < 10; i++) {
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (_cachedLocation != null) return _cachedLocation!;
       }
-    }
-
-    if (hasPermission == LocationPermission.deniedForever) {
       throw LocationPermissionException();
     }
 
-    final position = await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
-    ).timeout(const Duration(seconds: 10));
+    _isFetching = true;
 
-    return LatLng(position.latitude, position.longitude);
+    try {
+      final hasPermission = await Geolocator.checkPermission();
+
+      if (hasPermission == LocationPermission.denied) {
+        final permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied ||
+            permission == LocationPermission.deniedForever) {
+          throw LocationPermissionException();
+        }
+      }
+
+      if (hasPermission == LocationPermission.deniedForever) {
+        throw LocationPermissionException();
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10),
+        ),
+      );
+
+      _cachedLocation = LatLng(position.latitude, position.longitude);
+      return _cachedLocation!;
+    } finally {
+      _isFetching = false;
+    }
   }
 
-  // Check if user has moved 100+ meters since last fetch
-  Future<bool> shouldRefresh(LatLng currentLocation) async {
-    final prefs = await SharedPreferences.getInstance();
-    final lastLat = prefs.getDouble(_lastLatKey);
-    final lastLng = prefs.getDouble(_lastLngKey);
-
-    if (lastLat == null || lastLng == null) return true;
-
-    final distance = Geolocator.distanceBetween(
-      lastLat,
-      lastLng,
-      currentLocation.latitude,
-      currentLocation.longitude,
-    );
-
-    return distance >= _refreshThresholdMeters;
-  }
-
-  // Save current location as last fetch point
-  Future<void> updateLastFetch(LatLng location) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_lastLatKey, location.latitude);
-    await prefs.setDouble(_lastLngKey, location.longitude);
-  }
-
-  // Stream location changes for 100m detection while app is open
+  // Stream location changes for 100m detection
   Stream<LatLng> get locationStream {
     return Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
         distanceFilter: 100,
       ),
-    ).map((position) => LatLng(position.latitude, position.longitude));
+    ).map((position) {
+      final newLocation = LatLng(position.latitude, position.longitude);
+
+      if (_cachedLocation != null) {
+        final distance = Geolocator.distanceBetween(
+          _cachedLocation!.latitude,
+          _cachedLocation!.longitude,
+          newLocation.latitude,
+          newLocation.longitude,
+        );
+
+        if (distance >= _refreshThresholdMeters) {
+          _cachedLocation = newLocation;
+        }
+      } else {
+        _cachedLocation = newLocation;
+      }
+
+      return newLocation;
+    });
   }
 }
 
