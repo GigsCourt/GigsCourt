@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/auth_service.dart';
+import '../theme/app_theme.dart';
 import 'home_screen.dart';
 import 'search_screen.dart';
 import 'chat_list_screen.dart';
@@ -46,7 +47,20 @@ class _MainShellState extends State<MainShell> {
         .snapshots()
         .listen((snapshot) {
       if (mounted) {
-        setState(() => _unreadChats = snapshot.docs.length);
+        int unread = 0;
+        for (final doc in snapshot.docs) {
+          final data = doc.data();
+          final lastSenderId = data['lastMessageSenderId'] as String?;
+          final readBy = List<String>.from(data['readBy'] ?? []);
+          // Count as unread if last message was not sent by current user
+          // and current user hasn't read it
+          if (lastSenderId != null &&
+              lastSenderId != user.uid &&
+              !readBy.contains(user.uid)) {
+            unread++;
+          }
+        }
+        setState(() => _unreadChats = unread);
       }
     });
   }
@@ -57,6 +71,9 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final activeColor = isDark ? Colors.white : AppTheme.backgroundDark;
+
     final tabs = [
       _TabItem(icon: Icons.home_outlined, activeIcon: Icons.home, index: 0),
       _TabItem(icon: Icons.search_outlined, activeIcon: Icons.search, index: 1),
@@ -85,40 +102,43 @@ class _MainShellState extends State<MainShell> {
           ),
         ),
         child: SafeArea(
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: tabs.map((tab) {
-              final isActive = _currentIndex == tab.index;
-              return GestureDetector(
-                onTap: () {
-                  if (_currentIndex != tab.index) {
-                    HapticFeedback.selectionClick();
-                    setState(() => _currentIndex = tab.index);
-                  }
-                },
-                behavior: HitTestBehavior.opaque,
-                child: SizedBox(
-                  width: 48,
-                  height: 48,
-                  child: Center(
-                    child: _buildTabIcon(tab, isActive),
+          child: Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: tabs.map((tab) {
+                final isActive = _currentIndex == tab.index;
+                return GestureDetector(
+                  onTap: () {
+                    if (_currentIndex != tab.index) {
+                      HapticFeedback.selectionClick();
+                      setState(() => _currentIndex = tab.index);
+                    }
+                  },
+                  behavior: HitTestBehavior.opaque,
+                  child: SizedBox(
+                    width: 48,
+                    height: 48,
+                    child: Center(
+                      child: _buildTabIcon(tab, isActive, activeColor),
+                    ),
                   ),
-                ),
-              );
-            }).toList(),
+                );
+              }).toList(),
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildTabIcon(_TabItem tab, bool isActive) {
+  Widget _buildTabIcon(_TabItem tab, bool isActive, Color activeColor) {
     return Stack(
       children: [
         Icon(
           isActive ? tab.activeIcon : tab.icon,
-          size: 24,
-          color: isActive ? const Color(0xFF1A1F71) : const Color(0xFF6B7280),
+          size: 26,
+          color: isActive ? activeColor : const Color(0xFF6B7280),
         ),
         if (tab.badge != null && tab.badge! > 0)
           Positioned(
@@ -128,7 +148,7 @@ class _MainShellState extends State<MainShell> {
               padding: const EdgeInsets.all(3),
               decoration: const BoxDecoration(
                 shape: BoxShape.circle,
-                color: Color(0xFF1A1F71),
+                color: AppTheme.royalBlue,
               ),
               child: Text(
                 tab.badge! > 99 ? '99+' : '${tab.badge}',
