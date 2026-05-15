@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 class AppTheme {
   // Primary brand color — buttons, active nav, progress
-  static const Color royalBlue = Color(0xFF1A1F71);
+  static const Color royalBlue = Color(0xFF2D3BA0);
 
   // Backgrounds
   static const Color backgroundDark = Color(0xFF121212);
