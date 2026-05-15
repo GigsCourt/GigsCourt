@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import '../services/auth_service.dart';
 import '../services/delete_account_service.dart';
 import 'settings_sub_screens.dart';
+import '../utils/error_handler.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -55,8 +56,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _isLoading = false;
         });
       }
-    } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+    }} catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        showError(context, e);
+      }
     }
   }
 
@@ -98,6 +102,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         });
       }
     } catch (e) {
+      if (mounted) showError(context, e);
       if (_creditPackages.isEmpty) {
         setState(() {
           _creditPackages = [
