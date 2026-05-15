@@ -11,6 +11,7 @@ import '../services/image_service.dart';
 import '../widgets/profile_sheets.dart';
 import 'edit_workspace_screen.dart';
 import 'settings_screen.dart';
+import '../utils/error_handler.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String? uid;
@@ -80,10 +81,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
     } catch (e) {
       if (mounted) {
-        setState(() {
-          _error = e.toString();
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
+        showError(context, e);
       }
     }
   }
