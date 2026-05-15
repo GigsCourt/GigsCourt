@@ -27,7 +27,6 @@ class _SearchScreenState extends State<SearchScreen> {
   bool _isLoadingLocation = true;
   bool _locationDenied = false;
 
-  // Search state
   String _searchQuery = '';
   double _radiusKm = 1;
   bool _isMapView = true;
@@ -39,6 +38,9 @@ class _SearchScreenState extends State<SearchScreen> {
   String? _nextCursor;
   bool _isLoadingMore = false;
   final ScrollController _listScrollController = ScrollController();
+
+  List<Map<String, dynamic>> _suggestions = [];
+  bool _showSuggestions = false;
 
   @override
   void initState() {
@@ -85,6 +87,26 @@ class _SearchScreenState extends State<SearchScreen> {
     } catch (_) {}
   }
 
+  Future<void> _fetchSuggestions(String query) async {
+    try {
+      final response = await _supabase
+          .from('services')
+          .select('name, slug')
+          .eq('active', true)
+          .ilike('name', '%$query%')
+          .limit(6);
+
+      if (mounted) {
+        setState(() {
+          _suggestions = List<Map<String, dynamic>>.from(response);
+          _showSuggestions = _suggestions.isNotEmpty;
+        });
+      }
+    } catch (_) {
+      setState(() => _showSuggestions = false);
+    }
+  }
+
   Future<void> _search({String? cursor}) async {
     if (_searchQuery.isEmpty || _userLocation == null) return;
     HapticFeedback.lightImpact();
@@ -122,7 +144,6 @@ class _SearchScreenState extends State<SearchScreen> {
       final hasMore = rows.length > 10;
       final fetchUids = hasMore ? uids.sublist(0, 10) : uids;
 
-      // Batch read from Firestore
       final profiles = <ProviderCardData>[];
       for (int i = 0; i < fetchUids.length; i += 10) {
         final chunk = fetchUids.sublist(i, i + 10 > fetchUids.length ? fetchUids.length : i + 10);
@@ -151,7 +172,6 @@ class _SearchScreenState extends State<SearchScreen> {
         }
       }
 
-      // Sort: distance ASC → activity → rating → gigs
       profiles.sort((a, b) {
         final d = a.distance.compareTo(b.distance);
         if (d != 0) return d;
@@ -205,6 +225,8 @@ class _SearchScreenState extends State<SearchScreen> {
       _searchQuery = '';
       _results = [];
       _hasSearched = false;
+      _showSuggestions = false;
+      _suggestions = [];
     });
   }
 
@@ -224,7 +246,6 @@ class _SearchScreenState extends State<SearchScreen> {
       body: SafeArea(
         child: Stack(
           children: [
-            // Map
             if (_isMapView && !_locationDenied && _userLocation != null)
               FlutterMap(
                 mapController: _mapController,
@@ -237,7 +258,6 @@ class _SearchScreenState extends State<SearchScreen> {
                     urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                     userAgentPackageName: 'com.gigscourt.app',
                   ),
-                  // Provider markers
                   if (_results.isNotEmpty)
                     MarkerLayer(
                       markers: _results.map((p) {
@@ -278,11 +298,8 @@ class _SearchScreenState extends State<SearchScreen> {
                 ],
               ),
 
-            // List View
-            if (!_isMapView)
-              _buildListView(),
+            if (!_isMapView) _buildListView(),
 
-            // Controls overlay
             Positioned(
               top: 0,
               left: 0,
@@ -290,9 +307,7 @@ class _SearchScreenState extends State<SearchScreen> {
               child: _buildControls(),
             ),
 
-            // Location denied
-            if (_locationDenied)
-              _buildLocationDenied(),
+            if (_locationDenied) _buildLocationDenied(),
           ],
         ),
       ),
@@ -309,14 +324,26 @@ class _SearchScreenState extends State<SearchScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Search input + toggle
           Row(
             children: [
               Expanded(
                 child: TextField(
                   controller: _searchController,
-                  onChanged: (v) => _searchQuery = v,
-                  onSubmitted: (_) => _search(),
+                  onChanged: (v) {
+                    _searchQuery = v;
+                    if (v.isNotEmpty) {
+                      _fetchSuggestions(v);
+                    } else {
+                      setState(() {
+                        _showSuggestions = false;
+                        _suggestions = [];
+                      });
+                    }
+                  },
+                  onSubmitted: (_) {
+                    setState(() => _showSuggestions = false);
+                    _search();
+                  },
                   decoration: InputDecoration(
                     hintText: 'Search services...',
                     prefixIcon: const Icon(Icons.search, size: 20),
@@ -332,7 +359,6 @@ class _SearchScreenState extends State<SearchScreen> {
                 ),
               ),
               const SizedBox(width: 8),
-              // Map/List toggle
               Container(
                 decoration: BoxDecoration(
                   color: Theme.of(context).cardColor,
@@ -347,8 +373,36 @@ class _SearchScreenState extends State<SearchScreen> {
               ),
             ],
           ),
+          // Suggestions dropdown
+          if (_showSuggestions)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [BoxShadow(color: Colors.black.withAlpha(26), blurRadius: 8, offset: const Offset(0, 4))],
+                ),
+                child: Column(
+                  children: _suggestions.map((s) {
+                    final name = s['name'] as String;
+                    final slug = s['slug'] as String;
+                    return ListTile(
+                      dense: true,
+                      title: Text(name, style: const TextStyle(fontSize: 13)),
+                      onTap: () {
+                        _searchController.text = slug;
+                        _searchQuery = slug;
+                        setState(() => _showSuggestions = false);
+                        _search();
+                      },
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
           const SizedBox(height: 8),
-          // Radius slider
           Row(
             children: [
               const Text('Radius:', style: TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
@@ -377,7 +431,6 @@ class _SearchScreenState extends State<SearchScreen> {
               ),
             ],
           ),
-          // Popular services chips
           if (_popularServices.isNotEmpty)
             SizedBox(
               height: 32,
