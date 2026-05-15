@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 import '../services/home_service.dart';
+import '../theme/app_theme.dart';
 import 'provider_card.dart';
 
 class TrendingSection extends StatefulWidget {
@@ -29,6 +30,7 @@ class _TrendingSectionState extends State<TrendingSection> {
   String? _nextCursor;
   bool _hasMore = false;
   bool _isLoading = false;
+  int _activePage = 0;
 
   @override
   void initState() {
@@ -46,6 +48,17 @@ class _TrendingSectionState extends State<TrendingSection> {
   }
 
   void _onScroll() {
+    // Update active dot based on scroll position
+    if (_scrollController.hasClients) {
+      final screenWidth = MediaQuery.of(context).size.width;
+      final cardWidth = screenWidth * 0.78;
+      final page = (_scrollController.offset / (cardWidth + 4)).round();
+      if (page != _activePage) {
+        setState(() => _activePage = page);
+      }
+    }
+
+    // Fetch more when near the end
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 100) {
       _fetchMore();
@@ -74,8 +87,10 @@ class _TrendingSectionState extends State<TrendingSection> {
   Widget build(BuildContext context) {
     if (_providers.isEmpty) return const SizedBox.shrink();
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final dotColor = isDark ? Colors.white : AppTheme.backgroundDark;
     final screenWidth = MediaQuery.of(context).size.width;
-    final cardWidth = screenWidth * 0.72;
+    final cardWidth = screenWidth * 0.78;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -99,7 +114,7 @@ class _TrendingSectionState extends State<TrendingSection> {
         ),
         const SizedBox(height: 12),
         SizedBox(
-          height: cardWidth / 2.5,
+          height: (cardWidth / 2.5) + 8,
           child: ListView.builder(
             controller: _scrollController,
             scrollDirection: Axis.horizontal,
@@ -142,6 +157,27 @@ class _TrendingSectionState extends State<TrendingSection> {
             },
           ),
         ),
+        const SizedBox(height: 12),
+        // Scrolling dots indicator
+        if (_providers.length > 1)
+          Center(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(_providers.length, (index) {
+                final isActive = index == _activePage;
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  width: isActive ? 20 : 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: isActive ? dotColor : dotColor.withAlpha(77),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                );
+              }),
+            ),
+          ),
       ],
     );
   }
