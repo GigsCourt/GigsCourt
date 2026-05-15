@@ -12,6 +12,7 @@ import '../services/home_service.dart';
 import '../widgets/trending_section.dart';
 import '../widgets/nearby_section.dart';
 import '../widgets/provider_bottom_sheet.dart';
+import '../utils/error_handler.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
