@@ -94,7 +94,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
               const Icon(
                 Icons.email_outlined,
                 size: 80,
-                color: Color(0xFF2D3BA0),
+                color: AppTheme.royalBlue,
               ),
               const SizedBox(height: 32),
               const Text(
