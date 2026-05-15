@@ -34,6 +34,29 @@ class _ChatListScreenState extends State<ChatListScreen> with AutomaticKeepAlive
               return const Center(child: CircularProgressIndicator());
             }
 
+            if (snapshot.hasError) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                showError(context, snapshot.error!);
+              });
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.error_outline, size: 48, color: Color(0xFF6B7280)),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Could not load chats.\nTap to retry.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 13, color: Theme.of(context).textTheme.bodySmall?.color, height: 1.5),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+
             if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
               return Center(
                 child: Padding(
