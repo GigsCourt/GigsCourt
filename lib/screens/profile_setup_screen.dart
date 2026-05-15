@@ -27,16 +27,13 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   int _currentStep = 0;
   bool _isSaving = false;
 
-  // Step 1 state
   String _name = '';
   String _phone = '';
   String _bio = '';
   File? _photo;
 
-  // Step 2 state
   List<String> _selectedServices = [];
 
-  // Step 3 state
   LatLng _workspaceLocation = const LatLng(9.082, 8.6753);
   String _workspaceAddress = '';
 
@@ -55,6 +52,14 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     setState(() => _currentStep = step);
   }
 
+  Future<void> _updateServiceCounts(List<String> services) async {
+    for (final slug in services) {
+      await _firestore.collection('metadata').doc('service_counts').set({
+        slug: FieldValue.increment(1),
+      }, SetOptions(merge: true));
+    }
+  }
+
   Future<void> _completeSetup() async {
     final user = _authService.currentUser;
     if (user == null) return;
@@ -65,14 +70,12 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       String? photoUrl;
       String? photoFileId;
 
-      // Upload photo to ImageKit
       if (_photo != null) {
         final result = await _imageService.uploadToImageKit(_photo!, user.uid);
         photoUrl = result.url;
         photoFileId = result.fileId;
       }
 
-      // Write Supabase FIRST (guarantees location is set before Firestore)
       await _supabase.from('profiles').upsert({
         'id': user.uid,
         'workspace_location':
@@ -82,7 +85,6 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         'updated_at': DateTime.now().toIso8601String(),
       });
 
-      // Write Firestore second — with rollback if it fails
       try {
         await _firestore.collection('profiles').doc(user.uid).set({
           'name': _name,
@@ -105,12 +107,15 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
           'updatedAt': FieldValue.serverTimestamp(),
         });
       } catch (firestoreError) {
-        // Roll back Supabase so user can retry
         await _supabase.from('profiles').delete().eq('id', user.uid);
         rethrow;
       }
 
-      // Send welcome notification (fire-and-forget)
+      // Update service counts for search popularity
+      if (_selectedServices.isNotEmpty) {
+        await _updateServiceCounts(_selectedServices);
+      }
+
       PushService().sendWelcome(user.uid);
 
       if (mounted) {
@@ -133,7 +138,6 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Header with back button + step indicator
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
               child: Row(
@@ -146,24 +150,16 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                   if (_currentStep > 0) const SizedBox(width: 12),
                   Text(
                     'Step ${_currentStep + 1} of 3',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF6B7280),
-                    ),
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF6B7280)),
                   ),
                   const Spacer(),
                   Text(
                     '${((_currentStep + 1) / 3 * 100).round()}%',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF6B7280),
-                    ),
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
                   ),
                 ],
               ),
             ),
-            // Expanding dots
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Row(
@@ -185,7 +181,6 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            // Steps
             Expanded(
               child: PageView(
                 controller: _pageController,
@@ -221,7 +216,6 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 ],
               ),
             ),
-            // Bottom button
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
               child: SizedBox(
@@ -234,23 +228,14 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                           : () {
                               if (_currentStep == 0 && _name.trim().isEmpty) {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Please enter your name to continue'),
-                                  ),
+                                  const SnackBar(content: Text('Please enter your name to continue')),
                                 );
                                 return;
                               }
                               _goToStep(_currentStep + 1);
                             },
                   child: _isSaving
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
+                      ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                       : Text(
                           _currentStep == 2 ? 'Complete Setup' : 'Next',
                           style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
