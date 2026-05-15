@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/chat_service.dart';
 import 'chat_detail_screen.dart';
+import '../utils/error_handler.dart';
 
 class ChatListScreen extends StatefulWidget {
   const ChatListScreen({super.key});
@@ -81,6 +82,9 @@ class _ChatListScreenState extends State<ChatListScreen> with AutomaticKeepAlive
     return FutureBuilder<DocumentSnapshot>(
       future: _firestore.collection('profiles').doc(otherUid).get(),
       builder: (context, profileSnapshot) {
+        if (profileSnapshot.hasError && profileSnapshot.error != null) {
+          showError(context, profileSnapshot.error!);
+        }
         final name = profileSnapshot.data?.get('name') ?? 'User';
         final photoUrl = profileSnapshot.data?.get('photoUrl') ?? '';
 
