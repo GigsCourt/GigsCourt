@@ -164,20 +164,23 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Row(
                 children: List.generate(3, (index) {
-                  final isActive = index <= _currentStep;
-                  final isCurrent = index == _currentStep;
-                  return AnimatedContainer(
-                    duration: const Duration(milliseconds: 250),
-                    curve: Curves.easeInOut,
-                    margin: const EdgeInsets.only(right: 8),
-                    width: isCurrent ? 28 : 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: isActive ? const Color(0xFF1A1F71) : Theme.of(context).cardColor,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  );
-                }),
+  final isActive = index <= _currentStep;
+  final isCurrent = index == _currentStep;
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+  return AnimatedContainer(
+    duration: const Duration(milliseconds: 250),
+    curve: Curves.easeInOut,
+    margin: const EdgeInsets.only(right: 8),
+    width: isCurrent ? 28 : 8,
+    height: 8,
+    decoration: BoxDecoration(
+      color: isActive
+          ? AppTheme.royalBlue
+          : (isDark ? Colors.white : Colors.black87),
+      borderRadius: BorderRadius.circular(4),
+    ),
+  );
+}),
               ),
             ),
             const SizedBox(height: 16),
