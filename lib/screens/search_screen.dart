@@ -230,7 +230,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 mapController: _mapController,
                 options: MapOptions(
                   initialCenter: _userLocation!,
-                  initialZoom: 13.0,
+                  initialZoom: 15.0,
                 ),
                 children: [
                   TileLayer(
