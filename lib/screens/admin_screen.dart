@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../utils/error_handler.dart';
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({super.key});
@@ -117,7 +119,10 @@ class _DashboardTabState extends State<_DashboardTab> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        showError(context, e);
+      }
     }
   }
 
@@ -208,7 +213,10 @@ class _UsersTabState extends State<_UsersTab> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        showError(context, e);
+      }
     }
   }
 
@@ -311,7 +319,10 @@ class _ServicesTabState extends State<_ServicesTab> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        showError(context, e);
+      }
     }
   }
 
@@ -458,7 +469,10 @@ class _RevenueTabState extends State<_RevenueTab> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        showError(context, e);
+      }
     }
   }
 
@@ -569,7 +583,10 @@ class _ProvidersTabState extends State<_ProvidersTab> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        showError(context, e);
+      }
     }
   }
 
@@ -638,7 +655,10 @@ class _IssuesTabState extends State<_IssuesTab> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        showError(context, e);
+      }
     }
   }
 
