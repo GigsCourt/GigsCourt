@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/auth_service.dart';
+import '../theme/app_theme.dart';
 import 'settings_sub_screens.dart';
 
 class AuthScreen extends StatefulWidget {
@@ -214,7 +215,7 @@ class _AuthScreenState extends State<AuthScreen> {
                           child: Container(
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             decoration: BoxDecoration(
-                              color: !_isLogin ? const Color(0xFF2D3BA0) : Colors.transparent,
+                              color: !_isLogin ? AppTheme.royalBlue : Colors.transparent,
                               borderRadius: BorderRadius.circular(30),
                             ),
                             child: Text(
@@ -240,7 +241,7 @@ class _AuthScreenState extends State<AuthScreen> {
                           child: Container(
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             decoration: BoxDecoration(
-                              color: _isLogin ? const Color(0xFF2D3BA0) : Colors.transparent,
+                              color: _isLogin ? AppTheme.royalBlue : Colors.transparent,
                               borderRadius: BorderRadius.circular(30),
                             ),
                             child: Text(
@@ -352,7 +353,7 @@ class _AuthScreenState extends State<AuthScreen> {
                               const TextSpan(text: 'I agree to the '),
                               TextSpan(
                                 text: 'Terms of Service',
-                                style: const TextStyle(color: Color(0xFF2D3BA0), decoration: TextDecoration.underline),
+                                style: TextStyle(color: AppTheme.royalBlue, decoration: TextDecoration.underline),
                                 recognizer: TapGestureRecognizer()
                                   ..onTap = () {
                                     HapticFeedback.lightImpact();
@@ -364,7 +365,7 @@ class _AuthScreenState extends State<AuthScreen> {
                               const TextSpan(text: ' and '),
                               TextSpan(
                                 text: 'Privacy Policy',
-                                style: const TextStyle(color: Color(0xFF2D3BA0), decoration: TextDecoration.underline),
+                                style: TextStyle(color: AppTheme.royalBlue, decoration: TextDecoration.underline),
                                 recognizer: TapGestureRecognizer()
                                   ..onTap = () {
                                     HapticFeedback.lightImpact();
@@ -386,7 +387,7 @@ class _AuthScreenState extends State<AuthScreen> {
                   child: ElevatedButton(
                     onPressed: _isLoading ? null : _submit,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF2D3BA0),
+                      backgroundColor: AppTheme.royalBlue,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: const StadiumBorder(),
