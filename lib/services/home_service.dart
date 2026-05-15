@@ -12,17 +12,14 @@ class HomeService {
   static const String _nearbyCacheKey = 'home_nearby_cache';
   static const int _pageSize = 10;
 
-  // Get cached trending providers
   Future<List<ProviderCardData>> getCachedTrending() async {
     return _getCached(_trendingCacheKey);
   }
 
-  // Get cached nearby providers
   Future<List<ProviderCardData>> getCachedNearby() async {
     return _getCached(_nearbyCacheKey);
   }
 
-  // Fetch Trending providers (velocity-based)
   Future<PaginatedResult> fetchTrending({
     required LatLng userLocation,
     String? cursor,
@@ -35,7 +32,6 @@ class HomeService {
     );
   }
 
-  // Fetch Nearby providers (distance-based)
   Future<PaginatedResult> fetchNearby({
     required LatLng userLocation,
     String? cursor,
@@ -48,14 +44,12 @@ class HomeService {
     );
   }
 
-  // Core fetch logic
   Future<PaginatedResult> _fetchProviders({
     required LatLng userLocation,
     String? cursor,
     required String cacheKey,
     required bool sortForTrending,
   }) async {
-    // 1. Call Supabase RPC for nearby profile IDs
     final supabaseResult = await _supabase.rpc('get_nearby_profiles', params: {
       'user_lat': userLocation.latitude,
       'user_lng': userLocation.longitude,
@@ -68,23 +62,23 @@ class HomeService {
     }
 
     final List<dynamic> rows = supabaseResult;
-    final uids = rows.map((r) => r['id'] as String).toList();
-    final distances = Map<String, double>.fromEntries(
-      rows.map((r) => MapEntry(r['id'] as String, (r['distance_meters'] as num).toDouble())),
-    );
+    final uids = rows.map((r) => (r['id'] ?? '').toString()).where((id) => id.isNotEmpty).toList();
+    final distances = <String, double>{};
+    for (final r in rows) {
+      final id = (r['id'] ?? '').toString();
+      if (id.isNotEmpty) {
+        distances[id] = ((r['distance_meters'] ?? 0) as num).toDouble();
+      }
+    }
 
-    // Determine if there are more pages
     final hasMore = rows.length > _pageSize;
     final nextCursor = hasMore ? uids[_pageSize - 1] : null;
     final fetchUids = hasMore ? uids.sublist(0, _pageSize) : uids;
 
-    // 2. Batch read from Firestore
     final firestoreData = await _batchReadProfiles(fetchUids);
 
-    // 3. Merge and sort
     final providers = _mergeAndSort(firestoreData, distances, userLocation, sortForTrending);
 
-    // 4. Cache if first page
     if (cursor == null && providers.isNotEmpty) {
       _cacheProviders(cacheKey, providers);
     }
@@ -96,11 +90,9 @@ class HomeService {
     );
   }
 
-  // Batch read profiles from Firestore
   Future<Map<String, Map<String, dynamic>>> _batchReadProfiles(List<String> uids) async {
     final result = <String, Map<String, dynamic>>{};
 
-    // Firestore batch reads in chunks of 10
     for (int i = 0; i < uids.length; i += 10) {
       final chunk = uids.sublist(i, i + 10 > uids.length ? uids.length : i + 10);
       final snapshot = await _firestore
@@ -116,7 +108,6 @@ class HomeService {
     return result;
   }
 
-  // Merge Supabase distances with Firestore data and sort
   List<ProviderCardData> _mergeAndSort(
     Map<String, Map<String, dynamic>> firestoreData,
     Map<String, double> distances,
@@ -155,9 +146,7 @@ class HomeService {
     }
 
     if (sortForTrending) {
-      // Filter: must have ≥1 gig in 7 days AND ≥1 review
       providers.removeWhere((p) => p.gigCount7Days < 1 || p.reviewCount < 1);
-      // Sort: velocity DESC → distance ASC → rating DESC → gigs DESC
       providers.sort((a, b) {
         final velocityCompare = b.gigCount7Days.compareTo(a.gigCount7Days);
         if (velocityCompare != 0) return velocityCompare;
@@ -168,7 +157,6 @@ class HomeService {
         return b.gigCount.compareTo(a.gigCount);
       });
     } else {
-      // Nearby: distance ASC → activity badge → rating DESC → gigs DESC
       providers.sort((a, b) {
         final distanceCompare = a.distance.compareTo(b.distance);
         if (distanceCompare != 0) return distanceCompare;
@@ -185,21 +173,23 @@ class HomeService {
     return providers;
   }
 
-  // Cache providers to SharedPreferences
   Future<void> _cacheProviders(String key, List<ProviderCardData> providers) async {
     final prefs = await SharedPreferences.getInstance();
     final jsonList = providers.map((p) => jsonEncode(p.toJson())).toList();
     await prefs.setStringList(key, jsonList);
   }
 
-  // Get cached providers from SharedPreferences
   Future<List<ProviderCardData>> _getCached(String key) async {
-    final prefs = await SharedPreferences.getInstance();
-    final jsonList = prefs.getStringList(key);
-    if (jsonList == null || jsonList.isEmpty) return [];
-    return jsonList
-        .map((j) => ProviderCardData.fromJson(jsonDecode(j)))
-        .toList();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonList = prefs.getStringList(key);
+      if (jsonList == null || jsonList.isEmpty) return [];
+      return jsonList
+          .map((j) => ProviderCardData.fromJson(jsonDecode(j)))
+          .toList();
+    } catch (_) {
+      return [];
+    }
   }
 }
 
