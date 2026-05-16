@@ -36,7 +36,6 @@ async function getAccessToken(): Promise<string> {
 }
 
 async function atomicIncrementCredits(token: string, projectId: string, userId: string, credits: number) {
-  // Get current credits
   const response = await fetch(
     `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/profiles/${userId}`,
     { headers: { "Authorization": `Bearer ${token}` } }
@@ -50,7 +49,6 @@ async function atomicIncrementCredits(token: string, projectId: string, userId: 
 
   const newCredits = currentCredits + credits;
 
-  // Update with new value
   await fetch(
     `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/profiles/${userId}`,
     {
@@ -63,6 +61,25 @@ async function atomicIncrementCredits(token: string, projectId: string, userId: 
         fields: {
           credits: { integerValue: newCredits },
           updatedAt: { timestampValue: new Date().toISOString() },
+        },
+      }),
+    }
+  );
+}
+
+async function updateAdminStats(token: string, projectId: string, amount: number) {
+  // Use set with merge: true so the document is auto-created if it doesn't exist
+  await fetch(
+    `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/metadata/admin_stats`,
+    {
+      method: "PATCH",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        fields: {
+          totalRevenue: { integerValue: `INCREMENT_${amount}` },
         },
       }),
     }
@@ -102,8 +119,11 @@ async function recordPurchase(token: string, projectId: string, userId: string, 
     }
   );
 
-  // Increment credits
+  // Increment user credits
   await atomicIncrementCredits(token, projectId, userId, credits);
+
+  // Update admin revenue stats
+  await updateAdminStats(token, projectId, amount);
 }
 
 serve(async (req) => {
