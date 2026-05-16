@@ -69,9 +69,9 @@ class GigBanner extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       color: Theme.of(context).scaffoldBackgroundColor,
-      child: Text(
-        'Did you offer your services to $otherName? Register it now to get ratings and reviews to boost your reputation.',
-        style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+      child: _MarqueeText(
+        text: 'Did you offer your services to $otherName? Register it now to get ratings and reviews to boost your reputation.',
+        textColor: const Color(0xFF6B7280),
       ),
     );
   }
@@ -90,7 +90,7 @@ class GigBanner extends StatelessWidget {
           const Icon(Icons.info_outline, size: 14, color: Colors.red),
           const SizedBox(width: 8),
           Expanded(
-            child: _MarqueeText(text: text),
+            child: _MarqueeText(text: text, textColor: Colors.red),
           ),
         ],
       ),
@@ -100,7 +100,8 @@ class GigBanner extends StatelessWidget {
 
 class _MarqueeText extends StatefulWidget {
   final String text;
-  const _MarqueeText({required this.text});
+  final Color textColor;
+  const _MarqueeText({required this.text, this.textColor = Colors.red});
 
   @override
   State<_MarqueeText> createState() => _MarqueeTextState();
@@ -157,7 +158,7 @@ class _MarqueeTextState extends State<_MarqueeText> with SingleTickerProviderSta
             padding: const EdgeInsets.only(right: 40),
             child: Text(
               widget.text,
-              style: const TextStyle(fontSize: 12, color: Colors.red),
+              style: TextStyle(fontSize: 12, color: widget.textColor),
             ),
           );
         },
