@@ -20,7 +20,9 @@ class _MainShellState extends State<MainShell> {
   int _currentIndex = 0;
   final AuthService _authService = AuthService();
   int _unreadChats = 0;
+  bool _isAdmin = false;
   final List<Widget> _screens = [];
+  List<String> _adminEmails = [];
 
   @override
   void initState() {
@@ -31,10 +33,30 @@ class _MainShellState extends State<MainShell> {
       const ChatListScreen(),
       const ProfileScreen(),
     ]);
-    if (_isAdmin) {
+    _checkAdminAndInit();
+    _listenToUnreadChats();
+  }
+
+  Future<void> _checkAdminAndInit() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('metadata')
+          .doc('admin_settings')
+          .get();
+      if (doc.exists && mounted) {
+        final data = doc.data()!;
+        _adminEmails = List<String>.from(data['adminEmails'] ?? []);
+      }
+    } catch (_) {}
+
+    final email = _authService.currentUser?.email;
+    _isAdmin = email != null && _adminEmails.contains(email);
+
+    if (_isAdmin && !_screens.contains(const AdminScreen())) {
       _screens.add(const AdminScreen());
     }
-    _listenToUnreadChats();
+
+    if (mounted) setState(() {});
   }
 
   void _listenToUnreadChats() {
@@ -52,8 +74,6 @@ class _MainShellState extends State<MainShell> {
           final data = doc.data();
           final lastSenderId = data['lastMessageSenderId'] as String?;
           final readBy = List<String>.from(data['readBy'] ?? []);
-          // Count as unread if last message was not sent by current user
-          // and current user hasn't read it
           if (lastSenderId != null &&
               lastSenderId != user.uid &&
               !readBy.contains(user.uid)) {
@@ -63,10 +83,6 @@ class _MainShellState extends State<MainShell> {
         setState(() => _unreadChats = unread);
       }
     });
-  }
-
-  bool get _isAdmin {
-    return _authService.currentUser?.email == 'theprimestarventures@gmail.com';
   }
 
   @override
