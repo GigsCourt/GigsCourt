@@ -175,32 +175,59 @@ class ChatService {
     final providerId = gig['providerId'];
     final clientId = gig['clientId'];
 
+    // Read provider's current stats (2 document reads max)
     final providerDoc = await _firestore.collection('profiles').doc(providerId).get();
+    final currentRating = (providerDoc.data()?['rating'] ?? 0.0).toDouble();
+    final currentReviewCount = (providerDoc.data()?['reviewCount'] ?? 0).toInt();
     final currentCredits = (providerDoc.data()?['credits'] ?? 0).toInt();
-    await _firestore.collection('profiles').doc(providerId).update({'credits': currentCredits - 1});
 
-    final existingReviews = await _firestore.collection('reviews').where('providerId', isEqualTo: providerId).where('clientId', isEqualTo: clientId).get();
+    // Check if this client already has a review for this provider
+    final existingReviews = await _firestore.collection('reviews')
+        .where('providerId', isEqualTo: providerId)
+        .where('clientId', isEqualTo: clientId)
+        .get();
+
+    double newAvgRating;
+    int newReviewCount;
 
     if (existingReviews.docs.isNotEmpty) {
+      // Updating an existing review — get old rating
+      final oldRating = (existingReviews.docs.first.data()['rating'] ?? 0).toInt();
+      // Incremental average: remove old rating, add new rating, count stays same
+      final totalRatingSum = (currentRating * currentReviewCount) - oldRating + rating;
+      newAvgRating = totalRatingSum / currentReviewCount;
+      newReviewCount = currentReviewCount;
+
       await existingReviews.docs.first.reference.update({
         'rating': rating, 'text': text ?? '', 'createdAt': FieldValue.serverTimestamp(),
       });
     } else {
+      // New review — add to total
+      final totalRatingSum = (currentRating * currentReviewCount) + rating;
+      newReviewCount = currentReviewCount + 1;
+      newAvgRating = totalRatingSum / newReviewCount;
+
       await _firestore.collection('reviews').add({
-        'providerId': providerId, 'clientId': clientId, 'gigId': gigId, 'rating': rating, 'text': text ?? '', 'createdAt': FieldValue.serverTimestamp(),
+        'providerId': providerId, 'clientId': clientId, 'gigId': gigId,
+        'rating': rating, 'text': text ?? '', 'createdAt': FieldValue.serverTimestamp(),
       });
     }
 
-    final allReviews = await _firestore.collection('reviews').where('providerId', isEqualTo: providerId).get();
-    final avgRating = allReviews.docs.isEmpty ? 0.0 : allReviews.docs.map((d) => (d.data()['rating'] ?? 0).toInt()).reduce((a, b) => a + b) / allReviews.docs.length;
-
+    // Update provider profile atomically
     await _firestore.collection('profiles').doc(providerId).update({
-      'rating': avgRating, 'reviewCount': allReviews.docs.length,
-      'gigCount': FieldValue.increment(1), 'gigCount7Days': FieldValue.increment(1), 'gigCount30Days': FieldValue.increment(1),
-      'lastGigCompletedAt': FieldValue.serverTimestamp(), 'updatedAt': FieldValue.serverTimestamp(),
+      'rating': newAvgRating,
+      'reviewCount': newReviewCount,
+      'credits': currentCredits - 1,
+      'gigCount': FieldValue.increment(1),
+      'gigCount7Days': FieldValue.increment(1),
+      'gigCount30Days': FieldValue.increment(1),
+      'lastGigCompletedAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
     });
 
-    await _firestore.collection('gigs').doc(gigId).update({'status': 'completed', 'completedAt': FieldValue.serverTimestamp()});
+    await _firestore.collection('gigs').doc(gigId).update({
+      'status': 'completed', 'completedAt': FieldValue.serverTimestamp(),
+    });
 
     await _pushService.sendReviewSubmitted(providerId, clientId, rating);
   }
