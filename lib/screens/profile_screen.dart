@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,6 +9,7 @@ import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/auth_service.dart';
 import '../services/image_service.dart';
+import '../theme/app_theme.dart';
 import '../widgets/profile_sheets.dart';
 import 'edit_workspace_screen.dart';
 import 'settings_screen.dart';
@@ -36,6 +38,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isCollapsed = false;
   String? _error;
   bool _isUploadingPhotos = false;
+  StreamSubscription? _profileSubscription;
 
   String get _currentUid => widget.uid ?? _authService.currentUser?.uid ?? '';
   bool get _isOwnProfile => widget.isOwnProfile;
@@ -50,6 +53,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void dispose() {
     _scrollController.dispose();
+    _profileSubscription?.cancel();
     super.dispose();
   }
 
@@ -68,7 +72,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _profileData = doc.data();
           _isLoading = false;
         });
-        _firestore.collection('profiles').doc(_currentUid).snapshots().listen((snapshot) {
+        _profileSubscription?.cancel();
+        _profileSubscription = _firestore.collection('profiles').doc(_currentUid).snapshots().listen((snapshot) {
           if (snapshot.exists && mounted) {
             setState(() => _profileData = snapshot.data());
           }
@@ -167,7 +172,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       children: [
         RefreshIndicator(
           onRefresh: _loadProfile,
-          color: const Color(0xFF1A1F71),
+          color: AppTheme.royalBlue,
           child: ListView(
             key: const PageStorageKey('profile_list'),
             controller: _scrollController,
@@ -192,7 +197,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  CircularProgressIndicator(color: Color(0xFF1A1F71)),
+                  CircularProgressIndicator(color: AppTheme.royalBlue),
                   SizedBox(height: 16),
                   Text('Uploading photos...', style: TextStyle(color: Colors.white, fontSize: 14)),
                 ],
@@ -206,7 +211,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildStatsRow() {
     final gigCount = (_profileData?['gigCount'] ?? 0).toInt();
     final rating = (_profileData?['rating'] ?? 0.0).toDouble();
-    final reviewCount = (_profileData?['reviewCount'] ?? 0).toInt();
     final credits = (_profileData?['credits'] ?? 0).toInt();
 
     return Row(
@@ -243,12 +247,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 label: 'Rating',
                 onTap: () => ProfileSheets.reviews(context, _currentUid),
               ),
-              _buildStat(
-                value: credits.toString(),
-                icon: Icons.monetization_on_outlined,
-                label: 'Credits',
-                onTap: _isOwnProfile ? () => ProfileSheets.credits(context, _currentUid) : null,
-              ),
+              if (_isOwnProfile)
+                _buildStat(
+                  value: credits.toString(),
+                  icon: Icons.monetization_on_outlined,
+                  label: 'Credits',
+                  onTap: () => ProfileSheets.credits(context, _currentUid),
+                ),
             ],
           ),
         ),
@@ -262,6 +267,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required String label,
     VoidCallback? onTap,
   }) {
+    final isTappable = onTap != null;
     return GestureDetector(
       onTap: () {
         if (onTap != null) {
@@ -271,7 +277,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
       },
       child: Column(
         children: [
-          Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Theme.of(context).textTheme.bodyLarge?.color)),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).textTheme.bodyLarge?.color,
+                ),
+              ),
+              if (isTappable)
+                const Icon(Icons.chevron_right, size: 14, color: Color(0xFF6B7280)),
+            ],
+          ),
           const SizedBox(height: 4),
           Icon(icon, size: 16, color: const Color(0xFF6B7280)),
           const SizedBox(height: 2),
@@ -317,28 +337,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
         const SizedBox(height: 8),
         Text('$gigCount30Days gigs this month', style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280))),
-        if (address.isNotEmpty) ...[
+        if (address.isNotEmpty && _isOwnProfile) ...[
           const SizedBox(height: 8),
-          GestureDetector(
-            onTap: _isOwnProfile
-                ? () {
-                    HapticFeedback.lightImpact();
-                    Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(
-                      builder: (_) => EditWorkspaceScreen(
-                        currentAddress: address,
-                        currentLat: (_profileData?['workspaceLat'] ?? 0.0).toDouble(),
-                        currentLng: (_profileData?['workspaceLng'] ?? 0.0).toDouble(),
-                      ),
-                    ));
-                  }
-                : null,
-            child: Row(
-              children: [
-                const Icon(Icons.location_on_outlined, size: 14, color: Color(0xFF6B7280)),
-                const SizedBox(width: 4),
-                Flexible(child: Text(address, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280)))),
-              ],
-            ),
+          Row(
+            children: [
+              const Icon(Icons.location_on_outlined, size: 14, color: Color(0xFF6B7280)),
+              const SizedBox(width: 4),
+              Flexible(child: Text(address, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280)))),
+            ],
+          ),
+        ],
+        if (address.isNotEmpty && !_isOwnProfile) ...[
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              const Icon(Icons.location_on_outlined, size: 14, color: Color(0xFF6B7280)),
+              const SizedBox(width: 4),
+              Flexible(child: Text(address, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280)))),
+            ],
           ),
         ],
         if (services.isNotEmpty) ...[
@@ -347,7 +363,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             onTap: _isOwnProfile ? () => ProfileSheets.editServices(context, _currentUid, services) : null,
             child: Text(
               services.map((s) => s.replaceAll('-', ' ')).join(', '),
-              style: TextStyle(fontSize: 13, color: _isOwnProfile ? const Color(0xFF1A1F71) : const Color(0xFF6B7280)),
+              style: TextStyle(fontSize: 13, color: _isOwnProfile ? AppTheme.royalBlue : const Color(0xFF6B7280)),
             ),
           ),
         ],
@@ -429,10 +445,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (_isOwnProfile)
           Align(
             alignment: Alignment.centerLeft,
-            child: OutlinedButton.icon(
-              onPressed: _isUploadingPhotos ? null : () => _addWorkPhotos(workPhotos),
-              icon: const Icon(Icons.add, size: 16),
-              label: const Text('Add Photos'),
+            child: SizedBox(
+              height: 32,
+              child: OutlinedButton.icon(
+                onPressed: _isUploadingPhotos ? null : () => _addWorkPhotos(workPhotos),
+                icon: const Icon(Icons.add, size: 14),
+                label: const Text('Add Photos', style: TextStyle(fontSize: 12)),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  minimumSize: Size.zero,
+                ),
+              ),
             ),
           ),
         const SizedBox(height: 8),
@@ -589,16 +612,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           Row(children: [
-            Container(width: 72, height: 72, decoration: const BoxDecoration(color: Colors.grey, shape: BoxShape.circle)),
+            Container(width: 72, height: 72, decoration: BoxDecoration(color: Colors.grey.shade400, shape: BoxShape.circle)),
             const SizedBox(width: 24),
-            Expanded(child: Container(height: 14, color: Colors.grey)),
+            Expanded(child: Container(height: 14, color: Colors.grey.shade400)),
           ]),
           const SizedBox(height: 24),
-          Container(height: 14, width: 200, color: Colors.grey),
+          Container(height: 14, width: 200, color: Colors.grey.shade400),
           const SizedBox(height: 8),
-          Container(height: 14, color: Colors.grey),
+          Container(height: 14, color: Colors.grey.shade400),
           const SizedBox(height: 8),
-          Container(height: 100, color: Colors.grey),
+          Container(height: 100, color: Colors.grey.shade400),
         ],
       ),
     );
