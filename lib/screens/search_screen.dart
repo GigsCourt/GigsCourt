@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -699,6 +701,14 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
+  void _openLocationSettings() {
+    if (Platform.isIOS) {
+      launchUrl(Uri.parse('app-settings:'));
+    } else {
+      launchUrl(Uri.parse('android.settings.LOCATION_SOURCE_SETTINGS'));
+    }
+  }
+
   Widget _buildLocationDenied() {
     return Center(
       child: Padding(
@@ -714,6 +724,11 @@ class _SearchScreenState extends State<SearchScreen> {
               style: TextStyle(fontSize: 13, color: Color(0xFF6B7280))),
             const SizedBox(height: 16),
             ElevatedButton(onPressed: _getLocation, child: const Text('Try Again')),
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: _openLocationSettings,
+              child: const Text('Open Settings'),
+            ),
           ],
         ),
       ),
