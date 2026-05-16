@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/location_service.dart';
 import '../services/home_service.dart';
+import '../theme/app_theme.dart';
 import '../widgets/provider_bottom_sheet.dart';
 
 class SearchScreen extends StatefulWidget {
@@ -42,6 +43,10 @@ class _SearchScreenState extends State<SearchScreen> {
   List<Map<String, dynamic>> _suggestions = [];
   bool _showSuggestions = false;
 
+  // Route line state
+  LatLng? _routeTarget;
+  List<LatLng> _routePoints = [];
+
   @override
   void initState() {
     super.initState();
@@ -58,6 +63,10 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   Future<void> _getLocation() async {
+    setState(() {
+      _isLoadingLocation = true;
+      _locationDenied = false;
+    });
     try {
       final location = await _locationService.getLocation();
       if (mounted) {
@@ -227,6 +236,8 @@ class _SearchScreenState extends State<SearchScreen> {
       _hasSearched = false;
       _showSuggestions = false;
       _suggestions = [];
+      _routePoints = [];
+      _routeTarget = null;
     });
   }
 
@@ -240,76 +251,181 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
+  void _onMarkerLongPress(ProviderCardData provider) {
+    HapticFeedback.mediumImpact();
+    if (_userLocation == null) return;
+
+    final target = LatLng(provider.workspaceLat, provider.workspaceLng);
+    setState(() {
+      _routeTarget = target;
+      _routePoints = [_userLocation!, target];
+    });
+
+    // Auto-clear route after 5 seconds
+    Future.delayed(const Duration(seconds: 5), () {
+      if (mounted) {
+        setState(() {
+          _routePoints = [];
+          _routeTarget = null;
+        });
+      }
+    });
+  }
+
+  void _clearRoute() {
+    setState(() {
+      _routePoints = [];
+      _routeTarget = null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: Stack(
-          children: [
-            if (_isMapView && !_locationDenied && _userLocation != null)
-              FlutterMap(
-                mapController: _mapController,
-                options: MapOptions(
-                  initialCenter: _userLocation!,
-                  initialZoom: 15.0,
+        child: _isLoadingLocation
+            ? const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text('Getting your location...', style: TextStyle(color: Color(0xFF6B7280), fontSize: 13)),
+                  ],
                 ),
-                children: [
-                  TileLayer(
-                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    userAgentPackageName: 'com.gigscourt.app',
-                  ),
-                  if (_results.isNotEmpty)
-                    MarkerLayer(
-                      markers: _results.map((p) {
-                        final isActive = p.gigCount7Days >= 1;
-                        return Marker(
-                          point: LatLng(p.workspaceLat, p.workspaceLng),
-                          width: 44,
-                          height: 44,
-                          child: GestureDetector(
-                            onTap: () => _onMarkerTap(p),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: isActive ? const Color(0xFF4CAF50) : Colors.white,
-                                  width: isActive ? 3 : 2,
-                                ),
-                                boxShadow: [BoxShadow(color: Colors.black.withAlpha(51), blurRadius: 4)],
-                              ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(22),
-                                child: CachedNetworkImage(
-                                  imageUrl: p.photoUrl,
-                                  width: 44,
-                                  height: 44,
-                                  fit: BoxFit.cover,
-                                  errorWidget: (_, __, ___) => Container(
-                                    color: Theme.of(context).cardColor,
-                                    child: Icon(Icons.person, size: 20, color: Theme.of(context).textTheme.bodySmall?.color),
+              )
+            : _locationDenied
+                ? _buildLocationDenied()
+                : Stack(
+                    children: [
+                      if (_isMapView && _userLocation != null)
+                        FlutterMap(
+                          mapController: _mapController,
+                          options: MapOptions(
+                            initialCenter: _userLocation!,
+                            initialZoom: 15.0,
+                          ),
+                          children: [
+                            TileLayer(
+                              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                              userAgentPackageName: 'com.gigscourt.app',
+                            ),
+                            // User's location marker
+                            MarkerLayer(
+                              markers: [
+                                Marker(
+                                  point: _userLocation!,
+                                  width: 24,
+                                  height: 24,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: AppTheme.royalBlue.withAlpha(51),
+                                      border: Border.all(color: AppTheme.royalBlue, width: 3),
+                                    ),
+                                    child: const Center(
+                                      child: Icon(Icons.my_location, size: 12, color: AppTheme.royalBlue),
+                                    ),
                                   ),
                                 ),
+                              ],
+                            ),
+                            // Provider markers
+                            if (_results.isNotEmpty)
+                              MarkerLayer(
+                                markers: _results.map((p) {
+                                  final isActive = p.gigCount7Days >= 1;
+                                  final isRouteTarget = _routeTarget != null &&
+                                      _routeTarget!.latitude == p.workspaceLat &&
+                                      _routeTarget!.longitude == p.workspaceLng;
+                                  return Marker(
+                                    point: LatLng(p.workspaceLat, p.workspaceLng),
+                                    width: 44,
+                                    height: 44,
+                                    child: GestureDetector(
+                                      onTap: () => _onMarkerTap(p),
+                                      onLongPress: () => _onMarkerLongPress(p),
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: isRouteTarget
+                                                ? Colors.red
+                                                : isActive
+                                                    ? const Color(0xFF4CAF50)
+                                                    : Colors.white,
+                                            width: isRouteTarget ? 3 : (isActive ? 3 : 2),
+                                          ),
+                                          boxShadow: [BoxShadow(color: Colors.black.withAlpha(51), blurRadius: 4)],
+                                        ),
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(22),
+                                          child: CachedNetworkImage(
+                                            imageUrl: p.photoUrl,
+                                            width: 44,
+                                            height: 44,
+                                            fit: BoxFit.cover,
+                                            errorWidget: (_, __, ___) => Container(
+                                              color: Theme.of(context).cardColor,
+                                              child: Icon(Icons.person, size: 20, color: Theme.of(context).textTheme.bodySmall?.color),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                            // Route line
+                            if (_routePoints.length == 2)
+                              PolylineLayer(
+                                polylines: [
+                                  Polyline(
+                                    points: _routePoints,
+                                    strokeWidth: 3,
+                                    color: Colors.red,
+                                    isDotted: true,
+                                  ),
+                                ],
+                              ),
+                          ],
+                        ),
+
+                      if (!_isMapView) _buildListView(),
+
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        child: _buildControls(),
+                      ),
+
+                      // Clear route button
+                      if (_routeTarget != null)
+                        Positioned(
+                          top: 180,
+                          right: 12,
+                          child: GestureDetector(
+                            onTap: _clearRoute,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: Colors.red,
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.close, size: 14, color: Colors.white),
+                                  SizedBox(width: 4),
+                                  Text('Clear route', style: TextStyle(color: Colors.white, fontSize: 11)),
+                                ],
                               ),
                             ),
                           ),
-                        );
-                      }).toList(),
-                    ),
-                ],
-              ),
-
-            if (!_isMapView) _buildListView(),
-
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: _buildControls(),
-            ),
-
-            if (_locationDenied) _buildLocationDenied(),
-          ],
-        ),
+                        ),
+                    ],
+                  ),
       ),
     );
   }
@@ -373,7 +489,6 @@ class _SearchScreenState extends State<SearchScreen> {
               ),
             ],
           ),
-          // Suggestions dropdown
           if (_showSuggestions)
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
@@ -412,7 +527,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   min: 1,
                   max: 20,
                   divisions: 19,
-                  activeColor: const Color(0xFF1A1F71),
+                  activeColor: AppTheme.royalBlue,
                   label: '${_radiusKm.round()}km',
                   onChanged: (v) => setState(() => _radiusKm = v),
                   onChangeEnd: (_) => _hasSearched ? _search() : null,
@@ -421,7 +536,7 @@ class _SearchScreenState extends State<SearchScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1A1F71),
+                  color: AppTheme.royalBlue,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
@@ -446,10 +561,10 @@ class _SearchScreenState extends State<SearchScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       decoration: BoxDecoration(
                         color: _searchQuery == service
-                            ? const Color(0xFF1A1F71)
+                            ? AppTheme.royalBlue
                             : Theme.of(context).cardColor,
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: const Color(0xFF1A1F71).withAlpha(51)),
+                        border: Border.all(color: AppTheme.royalBlue.withAlpha(51)),
                       ),
                       child: Text(
                         service.replaceAll('-', ' '),
@@ -475,7 +590,7 @@ class _SearchScreenState extends State<SearchScreen> {
         width: 36, height: 36,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: isActive ? const Color(0xFF1A1F71) : Colors.transparent,
+          color: isActive ? AppTheme.royalBlue : Colors.transparent,
         ),
         child: Icon(icon, size: 18, color: isActive ? Colors.white : const Color(0xFF6B7280)),
       ),
