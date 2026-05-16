@@ -121,12 +121,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _listenToLocationChanges() {
-    _locationStreamSubscription = _locationService.locationStream.listen((newLocation) {
-      if (mounted) {
-        _userLocation = newLocation;
-        _fetchFreshData();
-      }
-    });
+    _locationStreamSubscription?.cancel();
+    _locationStreamSubscription = _locationService.locationStream.listen(
+      (newLocation) {
+        if (mounted) {
+          _userLocation = newLocation;
+          _fetchFreshData();
+        }
+      },
+      onError: (error) {
+        // Permission revoked or GPS unavailable — silently stop listening
+        // The user will see the location denied UI if they navigate away and back
+        if (mounted) {
+          setState(() => _locationDenied = true);
+        }
+      },
+      cancelOnError: true,
+    );
   }
 
   Future<void> _fetchFreshData() async {
