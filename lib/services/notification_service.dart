@@ -7,10 +7,8 @@ class NotificationService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  // Request permission and get token
   Future<String?> initialize() async {
     try {
-      // Request permission for iOS
       final settings = await _fcm.requestPermission(
         alert: true,
         badge: true,
@@ -19,13 +17,11 @@ class NotificationService {
 
       if (settings.authorizationStatus == AuthorizationStatus.authorized ||
           settings.authorizationStatus == AuthorizationStatus.provisional) {
-        // Get FCM token
         final token = await _fcm.getToken();
         if (token != null) {
           await _saveTokenToProfile(token);
         }
 
-        // Listen for token refresh
         _fcm.onTokenRefresh.listen((newToken) {
           _saveTokenToProfile(newToken);
         });
@@ -38,21 +34,28 @@ class NotificationService {
     return null;
   }
 
-  // Save FCM token to Firestore profile
   Future<void> _saveTokenToProfile(String token) async {
     final user = _auth.currentUser;
     if (user == null) return;
 
     try {
-      await _firestore.collection('profiles').doc(user.uid).set({
-        'fcmToken': token,
-      }, SetOptions(merge: true));
+      // Use update() to avoid creating a partial profile document
+      // Falls back to set() with merge if profile doesn't exist yet
+      try {
+        await _firestore.collection('profiles').doc(user.uid).update({
+          'fcmToken': token,
+        });
+      } catch (e) {
+        // Document might not exist yet — use set with merge
+        await _firestore.collection('profiles').doc(user.uid).set({
+          'fcmToken': token,
+        }, SetOptions(merge: true));
+      }
     } catch (e) {
       // Silently fail
     }
   }
 
-  // Get current token
   Future<String?> getToken() async {
     return await _fcm.getToken();
   }
