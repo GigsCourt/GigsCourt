@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
@@ -40,10 +41,10 @@ class ImageService {
       uiSettings: [
         AndroidUiSettings(
           toolbarTitle: 'Crop Photo',
-          toolbarColor: Color(0xFF1A1F71),
+          toolbarColor: const Color(0xFF2D3BA0),
           toolbarWidgetColor: Colors.white,
-          backgroundColor: Color(0xFF121212),
-          cropFrameColor: Color(0xFF1A1F71),
+          backgroundColor: const Color(0xFF121212),
+          cropFrameColor: const Color(0xFF2D3BA0),
           hideBottomControls: true,
         ),
         IOSUiSettings(
@@ -56,10 +57,15 @@ class ImageService {
 
   Future<ImageKitUploadResult> uploadToImageKit(File file, String userId, {String folder = '/profile_photos'}) async {
     try {
+      // Get a fresh Firebase ID token for authentication
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception('Not logged in');
+      final idToken = await user.getIdToken(true);
+
       final authResponse = await http.get(
         Uri.parse('https://ohysatmlieiatzwqwjyt.supabase.co/functions/v1/imagekit-auth'),
         headers: {
-          'Authorization': 'Bearer ${userId}',
+          'Authorization': 'Bearer $idToken',
         },
       );
 
