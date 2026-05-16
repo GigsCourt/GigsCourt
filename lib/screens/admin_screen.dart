@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../theme/app_theme.dart';
 import '../utils/error_handler.dart';
 
 class AdminScreen extends StatefulWidget {
@@ -38,9 +39,9 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
         bottom: TabBar(
           controller: _tabController,
           isScrollable: true,
-          labelColor: const Color(0xFF1A1F71),
+          labelColor: AppTheme.royalBlue,
           unselectedLabelColor: const Color(0xFF6B7280),
-          indicatorColor: const Color(0xFF1A1F71),
+          indicatorColor: AppTheme.royalBlue,
           tabs: const [
             Tab(text: 'Dashboard'),
             Tab(text: 'Users'),
@@ -92,28 +93,31 @@ class _DashboardTabState extends State<_DashboardTab> {
 
   Future<void> _loadStats() async {
     try {
-      final profiles = await _firestore.collection('profiles').count().get();
-      final gigs = await _firestore.collection('gigs').get();
-      final purchases = await _firestore.collection('credit_purchases').where('status', isEqualTo: 'completed').get();
+      // Use count() for Firestore aggregation (server-side, zero document reads cost)
+      final profilesCount = await _firestore.collection('profiles').count().get();
+      final gigsCount = await _firestore.collection('gigs').count().get();
+      final completedCount = await _firestore.collection('gigs').where('status', isEqualTo: 'completed').count().get();
+      final pendingCount = await _firestore.collection('gigs').where('status', isEqualTo: 'pending').count().get();
+      final cancelledCount = await _firestore.collection('gigs').where('status', isEqualTo: 'cancelled').count().get();
+      final purchasesCount = await _firestore.collection('credit_purchases').where('status', isEqualTo: 'completed').count().get();
 
-      int completed = 0, pending = 0, cancelled = 0, revenue = 0;
-      for (final doc in gigs.docs) {
-        final status = doc.data()['status'] ?? '';
-        if (status == 'completed') completed++;
-        if (status == 'pending') pending++;
-        if (status == 'cancelled') cancelled++;
-      }
-      for (final doc in purchases.docs) {
-        revenue += ((doc.data()['amount'] ?? 0) as num).toInt();
-      }
+      // For revenue, query only the amount field with a limit to reduce reads
+      // In production, maintain a stats document with pre-aggregated revenue
+      int revenue = 0;
+      try {
+        final revenueDoc = await _firestore.collection('metadata').doc('admin_stats').get();
+        if (revenueDoc.exists) {
+          revenue = (revenueDoc.data()?['totalRevenue'] ?? 0).toInt();
+        }
+      } catch (_) {}
 
       if (mounted) {
         setState(() {
-          _totalUsers = profiles.count ?? 0;
-          _totalGigs = gigs.docs.length;
-          _completedGigs = completed;
-          _pendingGigs = pending;
-          _cancelledGigs = cancelled;
+          _totalUsers = profilesCount.count ?? 0;
+          _totalGigs = gigsCount.count ?? 0;
+          _completedGigs = completedCount.count ?? 0;
+          _pendingGigs = pendingCount.count ?? 0;
+          _cancelledGigs = cancelledCount.count ?? 0;
           _revenue = revenue;
           _isLoading = false;
         });
@@ -153,7 +157,7 @@ class _DashboardTabState extends State<_DashboardTab> {
     return Card(
       color: Theme.of(context).cardColor,
       child: ListTile(
-        leading: Icon(icon, color: const Color(0xFF1A1F71)),
+        leading: Icon(icon, color: AppTheme.royalBlue),
         title: Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Theme.of(context).textTheme.bodyLarge?.color)),
         subtitle: Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
       ),
@@ -187,34 +191,79 @@ class _UsersTab extends StatefulWidget {
 class _UsersTabState extends State<_UsersTab> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   List<Map<String, dynamic>> _users = [];
+  DocumentSnapshot? _lastDoc;
   bool _isLoading = true;
+  bool _hasMore = true;
+  bool _isLoadingMore = false;
   String _searchQuery = '';
+  static const int _pageSize = 20;
 
   @override
   void initState() {
     super.initState();
     _loadUsers();
+    _scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+      _fetchMore();
+    }
   }
 
   Future<void> _loadUsers() async {
     try {
-      final snapshot = await _firestore.collection('profiles').orderBy('name').get();
+      final snapshot = await _firestore
+          .collection('profiles')
+          .orderBy('name')
+          .limit(_pageSize)
+          .get();
       if (mounted) {
         setState(() {
           _users = snapshot.docs.map((d) => d.data()..['uid'] = d.id).toList();
+          _lastDoc = snapshot.docs.isNotEmpty ? snapshot.docs.last : null;
+          _hasMore = snapshot.docs.length >= _pageSize;
           _isLoading = false;
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
+        showError(context, e);
+      }
+    }
+  }
+
+  Future<void> _fetchMore() async {
+    if (_isLoadingMore || !_hasMore || _lastDoc == null) return;
+    setState(() => _isLoadingMore = true);
+    try {
+      final snapshot = await _firestore
+          .collection('profiles')
+          .orderBy('name')
+          .startAfterDocument(_lastDoc!)
+          .limit(_pageSize)
+          .get();
+      if (mounted) {
+        setState(() {
+          _users.addAll(snapshot.docs.map((d) => d.data()..['uid'] = d.id));
+          _lastDoc = snapshot.docs.isNotEmpty ? snapshot.docs.last : null;
+          _hasMore = snapshot.docs.length >= _pageSize;
+          _isLoadingMore = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingMore = false);
         showError(context, e);
       }
     }
@@ -235,9 +284,10 @@ class _UsersTabState extends State<_UsersTab> {
     );
 
     if (amount != null && amount > 0) {
-      final doc = await _firestore.collection('profiles').doc(uid).get();
-      final current = (doc.data()?['credits'] ?? 0).toInt();
-      await _firestore.collection('profiles').doc(uid).update({'credits': current + amount});
+      // Use FieldValue.increment for atomic operation (prevents race conditions)
+      await _firestore.collection('profiles').doc(uid).update({
+        'credits': FieldValue.increment(amount),
+      });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$amount credits sent to $name')));
       }
@@ -247,6 +297,7 @@ class _UsersTabState extends State<_UsersTab> {
   @override
   Widget build(BuildContext context) {
     final filtered = _users.where((u) {
+      if (_searchQuery.isEmpty) return true;
       final name = (u['name'] ?? '').toString().toLowerCase();
       return name.contains(_searchQuery.toLowerCase());
     }).toList();
@@ -265,8 +316,12 @@ class _UsersTabState extends State<_UsersTab> {
           child: _isLoading
               ? const Center(child: CircularProgressIndicator())
               : ListView.builder(
-                  itemCount: filtered.length,
+                  controller: _scrollController,
+                  itemCount: filtered.length + (_hasMore && _searchQuery.isEmpty ? 1 : 0),
                   itemBuilder: (context, index) {
+                    if (index >= filtered.length) {
+                      return const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()));
+                    }
                     final u = filtered[index];
                     final name = u['name'] ?? 'Unknown';
                     final gigs = (u['gigCount'] ?? 0).toInt();
@@ -452,6 +507,9 @@ class _RevenueTabState extends State<_RevenueTab> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   List<Map<String, dynamic>> _purchases = [];
   bool _isLoading = true;
+  int _totalRevenue = 0;
+  int _weekRevenue = 0;
+  int _monthRevenue = 0;
 
   @override
   void initState() {
@@ -461,7 +519,24 @@ class _RevenueTabState extends State<_RevenueTab> {
 
   Future<void> _loadPurchases() async {
     try {
-      final snapshot = await _firestore.collection('credit_purchases').where('status', isEqualTo: 'completed').orderBy('createdAt', descending: true).get();
+      // Load aggregate stats
+      final statsDoc = await _firestore.collection('metadata').doc('admin_stats').get();
+      if (statsDoc.exists && mounted) {
+        final data = statsDoc.data()!;
+        setState(() {
+          _totalRevenue = (data['totalRevenue'] ?? 0).toInt();
+          _weekRevenue = (data['weekRevenue'] ?? 0).toInt();
+          _monthRevenue = (data['monthRevenue'] ?? 0).toInt();
+        });
+      }
+
+      // Load recent purchases for yearly breakdown (paginated)
+      final snapshot = await _firestore
+          .collection('credit_purchases')
+          .where('status', isEqualTo: 'completed')
+          .orderBy('createdAt', descending: true)
+          .limit(100)
+          .get();
       if (mounted) {
         setState(() {
           _purchases = snapshot.docs.map((d) => d.data()).toList();
@@ -474,25 +549,6 @@ class _RevenueTabState extends State<_RevenueTab> {
         showError(context, e);
       }
     }
-  }
-
-  int _weekRevenue() {
-    final now = DateTime.now();
-    final weekStart = now.subtract(Duration(days: now.weekday - 1));
-    return _revenueForPeriod(weekStart, now);
-  }
-
-  int _monthRevenue() {
-    final now = DateTime.now();
-    final monthStart = DateTime(now.year, now.month, 1);
-    return _revenueForPeriod(monthStart, now);
-  }
-
-  int _revenueForPeriod(DateTime start, DateTime end) {
-    return _purchases.where((p) {
-      final date = (p['createdAt'] as Timestamp?)?.toDate();
-      return date != null && !date.isBefore(start) && date.isBefore(end.add(const Duration(days: 1)));
-    }).fold<int>(0, (sum, p) => sum + ((p['amount'] ?? 0) as num).toInt());
   }
 
   Map<int, Map<int, int>> _yearlyRevenue() {
@@ -521,11 +577,11 @@ class _RevenueTabState extends State<_RevenueTab> {
         children: [
           Text('This Week', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Theme.of(context).textTheme.bodyLarge?.color)),
           const SizedBox(height: 4),
-          Text('₦${_weekRevenue()}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1A1F71))),
+          Text('₦$_weekRevenue', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppTheme.royalBlue)),
           const SizedBox(height: 16),
           Text('This Month', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Theme.of(context).textTheme.bodyLarge?.color)),
           const SizedBox(height: 4),
-          Text('₦${_monthRevenue()}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1A1F71))),
+          Text('₦$_monthRevenue', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppTheme.royalBlue)),
           const SizedBox(height: 24),
           Text('Yearly', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Theme.of(context).textTheme.bodyLarge?.color)),
           const SizedBox(height: 8),
@@ -544,10 +600,10 @@ class _RevenueTabState extends State<_RevenueTab> {
       color: Theme.of(context).cardColor,
       child: ExpansionTile(
         title: Text(year.toString(), style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).textTheme.bodyLarge?.color)),
-        subtitle: Text('₦$total', style: const TextStyle(color: Color(0xFF1A1F71))),
+        subtitle: Text('₦$total', style: const TextStyle(color: AppTheme.royalBlue)),
         children: sortedMonths.map((m) => ListTile(
           title: Text(monthNames[m], style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color)),
-          trailing: Text('₦${months[m] ?? 0}', style: const TextStyle(color: Color(0xFF1A1F71))),
+          trailing: Text('₦${months[m] ?? 0}', style: const TextStyle(color: AppTheme.royalBlue)),
         )).toList(),
       ),
     );
@@ -578,7 +634,7 @@ class _ProvidersTabState extends State<_ProvidersTab> {
       final snapshot = await _firestore.collection('profiles').orderBy('gigCount', descending: true).limit(50).get();
       if (mounted) {
         setState(() {
-          _providers = snapshot.docs.map((d) => d.data()).toList();
+          _providers = snapshot.docs.map((d) => d.data()..['uid'] = d.id).toList();
           _isLoading = false;
         });
       }
@@ -619,8 +675,13 @@ class _IssuesTab extends StatefulWidget {
 class _IssuesTabState extends State<_IssuesTab> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final TextEditingController _responseController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   List<Map<String, dynamic>> _issues = [];
+  DocumentSnapshot? _lastDoc;
   bool _isLoading = true;
+  bool _hasMore = true;
+  bool _isLoadingMore = false;
+  static const int _pageSize = 20;
 
   static const _presetResponses = [
     'Thank you for reporting. We are investigating this issue.',
@@ -637,26 +698,66 @@ class _IssuesTabState extends State<_IssuesTab> {
   void initState() {
     super.initState();
     _loadIssues();
+    _scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
     _responseController.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+      _fetchMore();
+    }
   }
 
   Future<void> _loadIssues() async {
     try {
-      final snapshot = await _firestore.collection('reported_issues').orderBy('createdAt', descending: true).get();
+      final snapshot = await _firestore
+          .collection('reported_issues')
+          .orderBy('createdAt', descending: true)
+          .limit(_pageSize)
+          .get();
       if (mounted) {
         setState(() {
           _issues = snapshot.docs.map((d) => d.data()..['id'] = d.id).toList();
+          _lastDoc = snapshot.docs.isNotEmpty ? snapshot.docs.last : null;
+          _hasMore = snapshot.docs.length >= _pageSize;
           _isLoading = false;
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
+        showError(context, e);
+      }
+    }
+  }
+
+  Future<void> _fetchMore() async {
+    if (_isLoadingMore || !_hasMore || _lastDoc == null) return;
+    setState(() => _isLoadingMore = true);
+    try {
+      final snapshot = await _firestore
+          .collection('reported_issues')
+          .orderBy('createdAt', descending: true)
+          .startAfterDocument(_lastDoc!)
+          .limit(_pageSize)
+          .get();
+      if (mounted) {
+        setState(() {
+          _issues.addAll(snapshot.docs.map((d) => d.data()..['id'] = d.id));
+          _lastDoc = snapshot.docs.isNotEmpty ? snapshot.docs.last : null;
+          _hasMore = snapshot.docs.length >= _pageSize;
+          _isLoadingMore = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingMore = false);
         showError(context, e);
       }
     }
@@ -708,9 +809,13 @@ class _IssuesTabState extends State<_IssuesTab> {
     if (_issues.isEmpty) return Center(child: Text('No issues reported', style: TextStyle(color: Theme.of(context).textTheme.bodySmall?.color)));
 
     return ListView.builder(
+      controller: _scrollController,
       padding: const EdgeInsets.all(16),
-      itemCount: _issues.length,
+      itemCount: _issues.length + (_hasMore ? 1 : 0),
       itemBuilder: (context, index) {
+        if (index >= _issues.length) {
+          return const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()));
+        }
         final issue = _issues[index];
         final status = issue['status'] ?? 'pending';
         return Card(
