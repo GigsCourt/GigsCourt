@@ -66,6 +66,7 @@ class ChatService {
       'lastMessageTime': FieldValue.serverTimestamp(),
       'lastMessageSenderId': _currentUid,
       'readBy': [_currentUid],
+      'unreadCount_$otherUid': FieldValue.increment(1),
     }, SetOptions(merge: true));
   }
 
@@ -97,9 +98,10 @@ class ChatService {
     }
     await batch.commit();
 
-    // Mark chat as read by current user
+    // Mark chat as read by current user and reset unread count
     await _firestore.collection('chats').doc(chatId).set({
       'readBy': FieldValue.arrayUnion([_currentUid]),
+      'unreadCount_$_currentUid': 0,
     }, SetOptions(merge: true));
   }
 
@@ -107,6 +109,23 @@ class ChatService {
     final ref = _firestore.collection('chats').doc(chatId).collection('messages').doc(messageId);
     if (isOwnMessage) {
       await ref.delete();
+      // Check if this was the last message and update preview
+      final remaining = await _firestore
+          .collection('chats').doc(chatId).collection('messages')
+          .orderBy('createdAt', descending: true)
+          .limit(1)
+          .get();
+      if (remaining.docs.isEmpty) {
+        await _updateChatPreview(chatId, 'No messages yet');
+      } else {
+        final lastMsg = remaining.docs.first.data();
+        final preview = lastMsg['type'] == 'text'
+            ? (lastMsg['text'] ?? '')
+            : lastMsg['type'] == 'image'
+                ? '📷 Image'
+                : '🎤 Voice message';
+        await _updateChatPreview(chatId, preview);
+      }
     } else {
       await ref.update({'deleted_for_$_currentUid': true});
     }
