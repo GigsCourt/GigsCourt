@@ -11,6 +11,7 @@ import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
 import '../services/chat_service.dart';
 import '../services/image_service.dart';
+import '../theme/app_theme.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/gig_banner.dart';
 import '../utils/error_handler.dart';
@@ -40,6 +41,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   bool _showScrollFab = false;
   bool _isTyping = false;
   Timer? _typingTimer;
+  Timer? _recordingTimer;
+  int _recordingSeconds = 0;
+  static const int _maxRecordingSeconds = 60;
+
+  final Set<String> _failedMessageIds = {};
+  final Map<String, String> _pendingRetryTexts = {};
 
   @override
   void initState() {
@@ -51,16 +58,25 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         setState(() => _showScrollFab = _scrollController.offset > 500);
       }
     });
+    _textController.addListener(_onTextControllerChanged);
   }
 
   @override
   void dispose() {
+    _textController.removeListener(_onTextControllerChanged);
     _textController.dispose();
     _scrollController.dispose();
     _typingTimer?.cancel();
+    _recordingTimer?.cancel();
     _audioRecorder.dispose();
     _chatService.setTyping(_chatId, false);
     super.dispose();
+  }
+
+  void _onTextControllerChanged() {
+    // Rebuild to toggle mic/send button
+    setState(() {});
+    _onTextChanged(_textController.text);
   }
 
   Future<void> _loadProfiles() async {
@@ -97,19 +113,34 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   Future<void> _sendText() async {
     final text = _textController.text.trim();
     if (text.isEmpty) return;
+    final pendingText = text;
     _textController.clear();
     _onTextChanged('');
     HapticFeedback.lightImpact();
     try {
-      await _chatService.sendMessage(_chatId, text);
+      await _chatService.sendMessage(_chatId, pendingText);
       _scrollToBottom();
     } catch (e) {
-      if (mounted) showError(context, e);
+      if (mounted) {
+        // Restore text on failure
+        _textController.text = pendingText;
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Failed to send. Tap retry.'),
+            action: SnackBarAction(
+              label: 'Retry',
+              onPressed: () => _sendText(),
+            ),
+          ),
+        );
+      }
     }
   }
 
   Future<void> _sendImage() async {
     HapticFeedback.lightImpact();
+    FocusScope.of(context).unfocus();
     showModalBottomSheet(
       context: context,
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -158,17 +189,31 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     final dir = await getTemporaryDirectory();
     final path = '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
     await _audioRecorder.start(const RecordConfig(encoder: AudioEncoder.aacLc), path: path);
+    _recordingSeconds = 0;
     setState(() => _isRecording = true);
+
+    // Start countdown timer
+    _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      _recordingSeconds++;
+      if (_recordingSeconds >= _maxRecordingSeconds) {
+        _stopRecording();
+      }
+      if (mounted) setState(() {});
+    });
   }
 
   Future<void> _stopRecording() async {
+    _recordingTimer?.cancel();
     final path = await _audioRecorder.stop();
-    setState(() => _isRecording = false);
+    final duration = _recordingSeconds;
+    setState(() {
+      _isRecording = false;
+      _recordingSeconds = 0;
+    });
     if (path != null) {
       HapticFeedback.heavyImpact();
       final file = File(path);
-      final duration = await file.length() / 16000;
-      await _chatService.sendVoice(_chatId, file, duration.clamp(0.5, 300));
+      await _chatService.sendVoice(_chatId, file, duration.toDouble().clamp(0.5, 60));
       _scrollToBottom();
     }
   }
@@ -176,6 +221,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
+        // reverse: true list, so position 0 is the bottom (latest messages)
         _scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
       }
     });
@@ -258,7 +304,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
     if (status == 'pending') {
       if (isProvider) {
-        // Provider can cancel
         final cancel = await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
@@ -274,7 +319,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           await _chatService.cancelGig(gigId);
         }
       } else {
-        // Client can review or cancel
         final action = await showModalBottomSheet<String>(
           context: context,
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -414,7 +458,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             stream: _firestore.collection('chats').doc(_chatId).snapshots(),
             builder: (context, chatSnapshot) {
               final chatData = chatSnapshot.data?.data();
-final gigId = chatData != null ? (chatData as Map<String, dynamic>)['gigId'] as String? : null;
+              final gigId = chatData != null ? (chatData as Map<String, dynamic>)['gigId'] as String? : null;
 
               if (gigId == null) {
                 return Padding(
@@ -422,7 +466,7 @@ final gigId = chatData != null ? (chatData as Map<String, dynamic>)['gigId'] as 
                   child: OutlinedButton(
                     onPressed: _onRegisterGig,
                     style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFF1A1F71)),
+                      side: const BorderSide(color: AppTheme.royalBlue),
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       shape: const StadiumBorder(),
                       minimumSize: Size.zero,
@@ -441,7 +485,7 @@ final gigId = chatData != null ? (chatData as Map<String, dynamic>)['gigId'] as 
                       child: OutlinedButton(
                         onPressed: _onRegisterGig,
                         style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: Color(0xFF1A1F71)),
+                          side: const BorderSide(color: AppTheme.royalBlue),
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                           shape: const StadiumBorder(),
                           minimumSize: Size.zero,
@@ -452,8 +496,8 @@ final gigId = chatData != null ? (chatData as Map<String, dynamic>)['gigId'] as 
                   }
 
                   final gig = gigSnapshot.data!.data()! as Map<String, dynamic>;
-final status = gig['status'] ?? 'pending';
-final providerId = gig['providerId'] as String?;
+                  final status = gig['status'] ?? 'pending';
+                  final providerId = gig['providerId'] as String?;
 
                   if (status == 'completed' || status == 'cancelled') {
                     return Padding(
@@ -461,7 +505,7 @@ final providerId = gig['providerId'] as String?;
                       child: OutlinedButton(
                         onPressed: _onRegisterGig,
                         style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: Color(0xFF1A1F71)),
+                          side: const BorderSide(color: AppTheme.royalBlue),
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                           shape: const StadiumBorder(),
                           minimumSize: Size.zero,
@@ -543,6 +587,25 @@ final providerId = gig['providerId'] as String?;
               },
             ),
           ),
+          // Recording timer display
+          if (_isRecording)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 8, height: 8,
+                    decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.red),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Recording ${_maxRecordingSeconds - _recordingSeconds}s remaining',
+                    style: const TextStyle(fontSize: 12, color: Colors.red),
+                  ),
+                ],
+              ),
+            ),
           StreamBuilder<bool>(
             stream: _chatService.isOtherUserTyping(_chatId),
             builder: (context, snapshot) {
@@ -567,7 +630,10 @@ final providerId = gig['providerId'] as String?;
             child: Row(
               children: [
                 GestureDetector(
-                  onTap: _sendImage,
+                  onTap: () {
+                    FocusScope.of(context).unfocus();
+                    _sendImage();
+                  },
                   child: Container(
                     width: 36, height: 36,
                     decoration: BoxDecoration(
@@ -582,11 +648,15 @@ final providerId = gig['providerId'] as String?;
                   child: Container(
                     decoration: BoxDecoration(
                       color: Theme.of(context).cardColor,
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.white.withAlpha(26)
+                            : Colors.black.withAlpha(26),
+                      ),
                     ),
                     child: TextField(
                       controller: _textController,
-                      onChanged: _onTextChanged,
                       maxLines: 4, minLines: 1,
                       textCapitalization: TextCapitalization.sentences,
                       decoration: const InputDecoration(
@@ -625,7 +695,7 @@ final providerId = gig['providerId'] as String?;
                           width: 36, height: 36,
                           decoration: const BoxDecoration(
                             shape: BoxShape.circle,
-                            color: Color(0xFF1A1F71),
+                            color: AppTheme.royalBlue,
                           ),
                           child: const Icon(Icons.arrow_upward, size: 20, color: Colors.white),
                         ),
