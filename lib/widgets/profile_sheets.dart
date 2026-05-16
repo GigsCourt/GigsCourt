@@ -4,6 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import '../services/image_service.dart';
+import '../screens/edit_workspace_screen.dart';
+import '../screens/settings_screen.dart';
 import '../utils/error_handler.dart';
 
 class ProfileSheets {
@@ -97,6 +99,31 @@ class ProfileSheets {
                       TextFormField(controller: phoneController, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Phone Number (optional)')),
                       const SizedBox(height: 12),
                       TextFormField(controller: bioController, maxLines: 3, decoration: const InputDecoration(labelText: 'Bio', alignLabelWithHint: true)),
+                      const SizedBox(height: 12),
+                      // Workspace Address pill button
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            Navigator.of(context, rootNavigator: true).push(
+                              MaterialPageRoute(
+                                builder: (_) => EditWorkspaceScreen(
+                                  currentAddress: data['workspaceAddress'] ?? '',
+                                  currentLat: (data['workspaceLat'] ?? 0.0).toDouble(),
+                                  currentLng: (data['workspaceLng'] ?? 0.0).toDouble(),
+                                ),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.location_on_outlined, size: 14),
+                          label: const Text('Workspace Address', style: TextStyle(fontSize: 12)),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            minimumSize: Size.zero,
+                          ),
+                        ),
+                      ),
                       const SizedBox(height: 20),
                       ElevatedButton(
                         onPressed: isSaving ? null : () async {
@@ -659,7 +686,9 @@ class _CreditsContentState extends State<_CreditsContent> {
                     OutlinedButton(
                       onPressed: () {
                         Navigator.pop(context);
-                        // The caller (settings or profile) handles navigation to buy credits
+                        Navigator.of(context, rootNavigator: true).push(
+                          MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                        );
                       },
                       child: const Text('Buy Credits'),
                     ),
