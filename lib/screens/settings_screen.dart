@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../services/auth_service.dart';
 import '../services/delete_account_service.dart';
+import '../theme/app_theme.dart';
 import 'settings_sub_screens.dart';
 import '../utils/error_handler.dart';
 
@@ -71,7 +72,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final cached = prefs.getString(_packagesCacheKey);
       final cachedTimestamp = prefs.getString(_packagesTimestampKey);
 
-      // Show cached first
       if (cached != null) {
         final cachedData = jsonDecode(cached) as List<dynamic>;
         setState(() {
@@ -79,7 +79,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         });
       }
 
-      // Check if prices changed
       final remoteDoc = await _firestore.collection('metadata').doc('credit_packages').get();
       if (remoteDoc.exists) {
         final remoteTimestamp = (remoteDoc.data()?['updatedAt'] as Timestamp?)?.toDate().toIso8601String();
@@ -91,7 +90,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           if (mounted) setState(() => _creditPackages = packages);
         }
       } else if (_creditPackages.isEmpty) {
-        // No remote config, use defaults
         setState(() {
           _creditPackages = [
             {'amount': 1500, 'credits': 3},
@@ -127,6 +125,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await _firestore.collection('profiles').doc(user.uid).update({'showPhone': value});
     } catch (e) {
       setState(() => _showPhone = !value);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to update. Please try again.')),
+        );
+      }
     }
   }
 
@@ -139,6 +142,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await _firestore.collection('profiles').doc(user.uid).update({'pushEnabled': value});
     } catch (e) {
       setState(() => _pushEnabled = !value);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to update. Please try again.')),
+        );
+      }
     }
   }
 
@@ -246,12 +254,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           'userId': user.uid,
           'metadata': {'credits': credits},
         }),
-      );
+      ).timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final authorizationUrl = data['authorizationUrl'] as String;
-
+        final accessCode = data['accessCode'] as String;
         final reference = data['reference'] as String;
 
         await FlutterPaystackPlus.openPaystackPopup(
@@ -259,7 +266,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           customerEmail: user.email!,
           amount: amount.toString(),
           publicKey: 'pk_test_4f6ae42964ab8da60e2f1c77cfb6fe1cd30806cc',
-          authorizationUrl: authorizationUrl,
+          accessCode: accessCode,
           reference: reference,
           onSuccess: () {
             HapticFeedback.heavyImpact();
@@ -450,7 +457,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   subtitle: const Text('Your phone number will be visible on your profile'),
                   value: _showPhone,
                   onChanged: _togglePhone,
-                  activeColor: const Color(0xFF1A1F71),
+                  activeColor: AppTheme.royalBlue,
                 ),
                 const SizedBox(height: 24),
                 _sectionTitle('Notifications'),
@@ -459,7 +466,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   subtitle: const Text('Receive notifications about gigs and messages'),
                   value: _pushEnabled,
                   onChanged: _togglePush,
-                  activeColor: const Color(0xFF1A1F71),
+                  activeColor: AppTheme.royalBlue,
                 ),
                 const SizedBox(height: 24),
                 _sectionTitle('Credits'),
