@@ -31,9 +31,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isLoadingPackages = false;
   String? _packagesError;
 
-  static const String _packagesCacheKey = 'credit_packages_cache';
-  static const String _packagesTimestampKey = 'credit_packages_timestamp';
-
   @override
   void initState() {
     super.initState();
@@ -67,28 +64,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _loadCreditPackages() async {
     setState(() => _isLoadingPackages = true);
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final cached = prefs.getString(_packagesCacheKey);
-      final cachedTimestamp = prefs.getString(_packagesTimestampKey);
-
-      if (cached != null) {
-        final cachedData = jsonDecode(cached) as List<dynamic>;
-        setState(() {
-          _creditPackages = cachedData.map((p) => Map<String, dynamic>.from(p)).toList();
-        });
-      }
-
+      // Try Firestore first
       final remoteDoc = await _firestore.collection('metadata').doc('credit_packages').get();
       if (remoteDoc.exists) {
-        final remoteTimestamp = (remoteDoc.data()?['updatedAt'] as Timestamp?)?.toDate().toIso8601String();
-        
-        if (remoteTimestamp != cachedTimestamp) {
-          final packages = List<Map<String, dynamic>>.from(remoteDoc.data()?['packages'] ?? []);
-          await prefs.setString(_packagesCacheKey, jsonEncode(packages));
-          await prefs.setString(_packagesTimestampKey, remoteTimestamp ?? DateTime.now().toIso8601String());
-          if (mounted) setState(() => _creditPackages = packages);
+        final packages = List<Map<String, dynamic>>.from(remoteDoc.data()?['packages'] ?? []);
+        if (packages.isNotEmpty && mounted) {
+          setState(() => _creditPackages = packages);
+          setState(() => _isLoadingPackages = false);
+          return;
         }
-      } else if (_creditPackages.isEmpty) {
+      }
+      
+      // Fallback to hardcoded defaults if Firestore is empty
+      if (_creditPackages.isEmpty) {
         setState(() {
           _creditPackages = [
             {'amount': 1500, 'credits': 3},
