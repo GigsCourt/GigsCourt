@@ -9,6 +9,7 @@ import '../services/push_service.dart';
 import 'profile_setup_step1.dart';
 import 'profile_setup_step2.dart';
 import 'profile_setup_step3.dart';
+import '../theme/app_theme.dart';
 
 class ProfileSetupScreen extends StatefulWidget {
   const ProfileSetupScreen({super.key});
