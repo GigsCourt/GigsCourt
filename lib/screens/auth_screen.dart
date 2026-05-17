@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 import 'settings_sub_screens.dart';
+import 'package:flutter/gestures.dart';
 
 class AuthScreen extends StatefulWidget {
   final String? prefilledEmail;
