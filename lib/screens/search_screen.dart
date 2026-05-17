@@ -386,7 +386,6 @@ class _SearchScreenState extends State<SearchScreen> {
                                     points: _routePoints,
                                     strokeWidth: 3,
                                     color: Colors.red,
-                                    isDotted: true,
                                   ),
                                 ],
                               ),
