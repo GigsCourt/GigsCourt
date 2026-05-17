@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_paystack_plus/flutter_paystack_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -258,15 +257,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final accessCode = data['accessCode'] as String;
         final reference = data['reference'] as String;
 
         await FlutterPaystackPlus.openPaystackPopup(
           context: context,
           customerEmail: user.email!,
-          amount: amount.toString(),
+          amount: (amount * 100).toString(),
           publicKey: 'pk_test_4f6ae42964ab8da60e2f1c77cfb6fe1cd30806cc',
-          accessCode: accessCode,
           reference: reference,
           onSuccess: () {
             HapticFeedback.heavyImpact();
