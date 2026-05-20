@@ -62,11 +62,13 @@ class ImageService {
       if (user == null) throw Exception('Not logged in');
       final idToken = await user.getIdToken(true);
 
-      final authResponse = await http.get(
+      final authResponse = await http.post(
         Uri.parse('https://ohysatmlieiatzwqwjyt.supabase.co/functions/v1/imagekit-auth'),
         headers: {
           'Authorization': 'Bearer $idToken',
+          'Content-Type': 'application/json',
         },
+        body: jsonEncode({'userId': userId}),
       );
 
       if (authResponse.statusCode != 200) {
