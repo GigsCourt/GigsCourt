@@ -42,6 +42,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _isInitialLoad = true;
   bool _isFetching = false;
   bool _hasFreshData = false;
+  bool _showScrollFab = false;
 
   int _unreadCount = 0;
   StreamSubscription? _notificationSubscription;
@@ -90,10 +91,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _loadCachedData() async {
+    // Don't load cache if we already have fresh data
+    if (_hasFreshData) return;
+    
     final cachedTrending = await _homeService.getCachedTrending();
     final cachedNearby = await _homeService.getCachedNearby();
 
-    if (mounted && (cachedTrending.isNotEmpty || cachedNearby.isNotEmpty)) {
+    // Check again after async gap — fresh data might have arrived
+    if (mounted && !_hasFreshData && (cachedTrending.isNotEmpty || cachedNearby.isNotEmpty)) {
       setState(() {
         _trendingProviders = cachedTrending;
         _nearbyProviders = cachedNearby;
@@ -130,8 +135,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         }
       },
       onError: (error) {
-        // Permission revoked or GPS unavailable — silently stop listening
-        // The user will see the location denied UI if they navigate away and back
         if (mounted) {
           setState(() => _locationDenied = true);
         }
@@ -188,9 +191,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _onScroll() {
-    final collapsed = _scrollController.hasClients && _scrollController.offset > 80;
-    if (collapsed != _isCollapsed) {
-      setState(() => _isCollapsed = collapsed);
+    if (_scrollController.hasClients) {
+      final collapsed = _scrollController.offset > 80;
+      if (collapsed != _isCollapsed) {
+        setState(() => _isCollapsed = collapsed);
+      }
+      final showFab = _scrollController.offset > 200;
+      if (showFab != _showScrollFab) {
+        setState(() => _showScrollFab = showFab);
+      }
     }
   }
 
@@ -323,7 +332,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
           ],
         ),
-        if (_scrollController.hasClients && _scrollController.offset > 200)
+        if (_showScrollFab)
           Positioned(
             right: 16,
             bottom: 16,
