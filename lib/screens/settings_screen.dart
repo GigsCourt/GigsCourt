@@ -5,6 +5,7 @@ import 'package:flutter_paystack_plus/flutter_paystack_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../config/app_config.dart';
 import '../services/auth_service.dart';
 import '../services/delete_account_service.dart';
 import '../theme/app_theme.dart';
@@ -64,7 +65,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _loadCreditPackages() async {
     setState(() => _isLoadingPackages = true);
     try {
-      // Try Firestore first
       final remoteDoc = await _firestore.collection('metadata').doc('credit_packages').get();
       if (remoteDoc.exists) {
         final packages = List<Map<String, dynamic>>.from(remoteDoc.data()?['packages'] ?? []);
@@ -75,7 +75,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         }
       }
       
-      // Fallback to hardcoded defaults if Firestore is empty
       if (_creditPackages.isEmpty) {
         setState(() {
           _creditPackages = [
@@ -232,55 +231,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final user = _authService.currentUser;
       if (user == null) return;
 
-      final response = await http.post(
-        Uri.parse('https://ohysatmlieiatzwqwjyt.supabase.co/functions/v1/paystack-initialize'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'email': user.email,
-          'amount': amount,
+      final reference = 'gigscourt_${DateTime.now().millisecondsSinceEpoch}_${user.uid}';
+
+      await FlutterPaystackPlus.openPaystackPopup(
+        context: context,
+        customerEmail: user.email!,
+        amount: (amount * 100).toString(),
+        publicKey: AppConfig.paystackPublicKey,
+        secretKey: AppConfig.paystackSecretKey,
+        reference: reference,
+        metadata: {
           'userId': user.uid,
-          'metadata': {'credits': credits},
-        }),
-      ).timeout(const Duration(seconds: 15));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final reference = data['reference'] as String;
-        final authorizationUrl = data['authorizationUrl'] as String;
-
-        await FlutterPaystackPlus.openPaystackPopup(
-          context: context,
-          customerEmail: user.email!,
-          amount: (amount * 100).toString(),
-          publicKey: 'pk_test_4f6ae42964ab8da60e2f1c77cfb6fe1cd30806cc',
-          reference: reference,
-          authorizationUrl: authorizationUrl,
-          onSuccess: () {
-            HapticFeedback.heavyImpact();
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Payment successful! Your credits will be updated shortly.')),
-              );
-              _loadSettings();
-            }
-          },
-          onClosed: () {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Payment cancelled.')),
-              );
-            }
-          },
-        );
-      } else {
-        final error = jsonDecode(response.body);
-        HapticFeedback.vibrate();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(error['error'] ?? 'Payment initialization failed')),
-          );
-        }
-      }
+          'credits': credits.toString(),
+        },
+        onSuccess: () {
+          HapticFeedback.heavyImpact();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Payment successful! Your credits will be updated shortly.')),
+            );
+            _loadSettings();
+          }
+        },
+        onClosed: () {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Payment cancelled.')),
+            );
+          }
+        },
+      );
     } catch (e) {
       HapticFeedback.vibrate();
       if (mounted) {
