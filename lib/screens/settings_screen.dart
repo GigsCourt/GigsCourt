@@ -182,8 +182,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Center(child: Text(_packagesError!, style: const TextStyle(color: Colors.red)))
               else
                 ..._creditPackages.where((pkg) => pkg['amount'] != null && pkg['credits'] != null).map((pkg) {
-                  final amount = int.tryParse((pkg['amount'] ?? 0).toString()) ?? 0;
-                  final credits = int.tryParse((pkg['credits'] ?? 0).toString()) ?? 0;
+                  final amount = (pkg['amount'] as num).toInt();
+                  final credits = (pkg['credits'] as num).toInt();
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 10),
                     child: OutlinedButton(
