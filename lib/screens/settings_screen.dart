@@ -1,15 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_paystack_plus/flutter_paystack_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import '../config/app_config.dart';
 import '../services/auth_service.dart';
 import '../services/delete_account_service.dart';
 import '../theme/app_theme.dart';
 import 'settings_sub_screens.dart';
+import 'payment_webview_screen.dart';
 import '../utils/error_handler.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -231,20 +230,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final user = _authService.currentUser;
       if (user == null) return;
 
-      final reference = 'gigscourt_${DateTime.now().millisecondsSinceEpoch}_${user.uid}';
-
-      await FlutterPaystackPlus.openPaystackPopup(
-        context: context,
-        customerEmail: user.email!,
-        amount: (amount * 100).toString(),
-        publicKey: AppConfig.paystackPublicKey,
-        secretKey: AppConfig.paystackSecretKey,
-        reference: reference,
-        metadata: {
+      final response = await http.post(
+        Uri.parse('https://ohysatmlieiatzwqwjyt.supabase.co/functions/v1/paystack-initialize'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email': user.email,
+          'amount': amount,
           'userId': user.uid,
-          'credits': credits.toString(),
-        },
-        onSuccess: () {
+          'metadata': {'credits': credits},
+        }),
+      ).timeout(const Duration(seconds: 15));
+
+      if (response.statusCode != 200) {
+        final error = jsonDecode(response.body);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(error['error'] ?? 'Payment initialization failed')),
+          );
+        }
+        return;
+      }
+
+      final data = jsonDecode(response.body);
+      final authorizationUrl = data['authorizationUrl'] as String;
+      final reference = data['reference'] as String;
+
+      if (mounted) {
+        final result = await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => PaymentWebViewScreen(
+              authorizationUrl: authorizationUrl,
+              reference: reference,
+              callbackUrl: 'https://gigscourt.com/payment/callback',
+            ),
+          ),
+        );
+
+        if (result != null && result is Map && result['status'] == 'success') {
           HapticFeedback.heavyImpact();
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -252,15 +274,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             );
             _loadSettings();
           }
-        },
-        onClosed: () {
+        } else {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Payment cancelled.')),
             );
           }
-        },
-      );
+        }
+      }
     } catch (e) {
       HapticFeedback.vibrate();
       if (mounted) {
