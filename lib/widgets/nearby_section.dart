@@ -42,6 +42,17 @@ class _NearbySectionState extends State<NearbySection> {
   }
 
   @override
+  void didUpdateWidget(NearbySection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Only update if the parent provided new initial data (first page load)
+    if (widget.initialProviders != oldWidget.initialProviders && _nextCursor == null) {
+      _providers = widget.initialProviders;
+      _nextCursor = widget.nextCursor;
+      _hasMore = widget.hasMore;
+    }
+  }
+
+  @override
   void dispose() {
     widget.parentScrollController.removeListener(_onParentScroll);
     super.dispose();
