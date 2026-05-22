@@ -246,6 +246,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final reference = data['reference'] as String;
+        final authorizationUrl = data['authorizationUrl'] as String;
 
         await FlutterPaystackPlus.openPaystackPopup(
           context: context,
@@ -253,6 +254,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           amount: (amount * 100).toString(),
           publicKey: 'pk_test_4f6ae42964ab8da60e2f1c77cfb6fe1cd30806cc',
           reference: reference,
+          authorizationUrl: authorizationUrl,
           onSuccess: () {
             HapticFeedback.heavyImpact();
             if (mounted) {
