@@ -181,7 +181,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               else if (_packagesError != null)
                 Center(child: Text(_packagesError!, style: const TextStyle(color: Colors.red)))
               else
-                ..._creditPackages.where((pkg) => pkg['amount'] != null && pkg['credits'] != null).map((pkg) {
+                ..._creditPackages.map((pkg) {
                   final amount = (pkg['amount'] as num).toInt();
                   final credits = (pkg['credits'] as num).toInt();
                   return Padding(
