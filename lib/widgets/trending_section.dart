@@ -42,13 +42,23 @@ class _TrendingSectionState extends State<TrendingSection> {
   }
 
   @override
+  void didUpdateWidget(TrendingSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Only update if the parent provided new initial data (first page load)
+    if (widget.initialProviders != oldWidget.initialProviders && _nextCursor == null) {
+      _providers = widget.initialProviders;
+      _nextCursor = widget.nextCursor;
+      _hasMore = widget.hasMore;
+    }
+  }
+
+  @override
   void dispose() {
     _scrollController.dispose();
     super.dispose();
   }
 
   void _onScroll() {
-    // Update active dot based on scroll position
     if (_scrollController.hasClients) {
       final screenWidth = MediaQuery.of(context).size.width;
       final cardWidth = screenWidth * 0.78;
@@ -58,7 +68,6 @@ class _TrendingSectionState extends State<TrendingSection> {
       }
     }
 
-    // Fetch more when near the end
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 100) {
       _fetchMore();
@@ -158,7 +167,6 @@ class _TrendingSectionState extends State<TrendingSection> {
           ),
         ),
         const SizedBox(height: 12),
-        // Scrolling dots indicator
         if (_providers.length > 1)
           Center(
             child: Row(
