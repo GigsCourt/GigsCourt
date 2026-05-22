@@ -20,6 +20,7 @@ class PaymentWebViewScreen extends StatefulWidget {
 class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
   late final WebViewController _controller;
   bool _isLoading = true;
+  bool _paymentCompleted = false;
 
   @override
   void initState() {
@@ -34,19 +35,21 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
           },
           onPageFinished: (url) {
             setState(() => _isLoading = false);
-            // Check if payment is complete by looking for the callback URL
-            if (url.contains(widget.callbackUrl) || 
-                url.contains('reference=') ||
-                url.contains('trxref=')) {
-              Navigator.of(context).pop({'status': 'success', 'reference': widget.reference});
+            // Detect payment completion by checking for Paystack's redirect parameters
+            final uri = Uri.tryParse(url);
+            if (uri != null) {
+              final hasReference = uri.queryParameters.containsKey('reference');
+              final hasTrxref = uri.queryParameters.containsKey('trxref');
+              if (hasReference || hasTrxref) {
+                _paymentCompleted = true;
+                Navigator.of(context).pop({'status': 'success', 'reference': widget.reference});
+              }
             }
           },
           onNavigationRequest: (request) {
-            // Block external URLs from opening in browser
-            if (request.url.startsWith('https://standard.paystack.com') ||
-                request.url.startsWith('https://checkout.paystack.com') ||
-                request.url.startsWith(widget.callbackUrl) ||
-                request.url.contains('paystack')) {
+            // Allow Paystack URLs and the callback URL
+            if (request.url.contains('paystack') ||
+                request.url.contains(widget.callbackUrl)) {
               return NavigationDecision.navigate;
             }
             return NavigationDecision.prevent;
@@ -66,7 +69,10 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
         leading: IconButton(
           icon: const Icon(Icons.close, color: Colors.black),
           onPressed: () {
-            Navigator.of(context).pop({'status': 'cancelled'});
+            Navigator.of(context).pop({
+              'status': _paymentCompleted ? 'success' : 'cancelled',
+              'reference': widget.reference,
+            });
           },
         ),
         title: const Text(
