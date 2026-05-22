@@ -45,9 +45,9 @@ async function atomicIncrementCredits(token: string, projectId: string, userId: 
   
   const data = await response.json();
   const fields = data.fields || {};
-  const currentCredits = parseInt(fields.credits?.integerValue || "0");
-
-  const newCredits = currentCredits + credits;
+  const currentCredits = Number(fields.credits?.integerValue || "0");
+  const creditsToAdd = Number(credits);
+  const newCredits = currentCredits + creditsToAdd;
 
   await fetch(
     `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/profiles/${userId}`,
@@ -68,7 +68,19 @@ async function atomicIncrementCredits(token: string, projectId: string, userId: 
 }
 
 async function updateAdminStats(token: string, projectId: string, amount: number) {
-  // Use set with merge: true so the document is auto-created if it doesn't exist
+  const getResponse = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/metadata/admin_stats`,
+    { headers: { "Authorization": `Bearer ${token}` } }
+  );
+
+  let currentTotal = 0;
+  if (getResponse.status === 200) {
+    const data = await getResponse.json();
+    currentTotal = Number(data.fields?.totalRevenue?.integerValue || "0");
+  }
+
+  const newTotal = currentTotal + Number(amount);
+
   await fetch(
     `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/metadata/admin_stats`,
     {
@@ -79,7 +91,8 @@ async function updateAdminStats(token: string, projectId: string, amount: number
       },
       body: JSON.stringify({
         fields: {
-          totalRevenue: { integerValue: `INCREMENT_${amount}` },
+          totalRevenue: { integerValue: newTotal },
+          updatedAt: { timestampValue: new Date().toISOString() },
         },
       }),
     }
@@ -87,17 +100,15 @@ async function updateAdminStats(token: string, projectId: string, amount: number
 }
 
 async function recordPurchase(token: string, projectId: string, userId: string, amount: number, credits: number, reference: string) {
-  // Check idempotency — don't process same reference twice
   const checkResponse = await fetch(
     `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/credit_purchases/${reference}`,
     { headers: { "Authorization": `Bearer ${token}` } }
   );
 
   if (checkResponse.status === 200) {
-    return; // Already processed
+    return;
   }
 
-  // Record purchase
   await fetch(
     `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/credit_purchases/${reference}`,
     {
@@ -119,10 +130,7 @@ async function recordPurchase(token: string, projectId: string, userId: string, 
     }
   );
 
-  // Increment user credits
   await atomicIncrementCredits(token, projectId, userId, credits);
-
-  // Update admin revenue stats
   await updateAdminStats(token, projectId, amount);
 }
 
@@ -132,7 +140,6 @@ serve(async (req) => {
   }
 
   try {
-    // Verify Paystack signature
     const secretKey = Deno.env.get("PAYSTACK_SECRET_KEY")!;
     const body = await req.text();
     const signature = req.headers.get("x-paystack-signature");
@@ -154,7 +161,6 @@ serve(async (req) => {
 
     const event = JSON.parse(body);
 
-    // Only process successful charge events
     if (event.event !== "charge.success") {
       return new Response(JSON.stringify({ success: true, message: "Event ignored" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -175,12 +181,11 @@ serve(async (req) => {
     const projectId = Deno.env.get("FIREBASE_PROJECT_ID")!;
     const firestoreToken = await getAccessToken();
 
-    // Record purchase with idempotency (reference as document ID)
     await recordPurchase(
       firestoreToken,
       projectId,
       userId,
-      amount / 100, // Convert kobo to Naira
+      amount / 100,
       credits,
       reference,
     );
