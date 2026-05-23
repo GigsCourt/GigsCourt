@@ -21,6 +21,7 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
   late final WebViewController _controller;
   bool _isLoading = true;
   bool _paymentCompleted = false;
+  bool _paymentFailed = false;
 
   @override
   void initState() {
@@ -35,21 +36,11 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
           },
           onPageFinished: (url) {
             setState(() => _isLoading = false);
-            // Detect payment completion by checking for Paystack's redirect parameters
-            final uri = Uri.tryParse(url);
-            if (uri != null) {
-              final hasReference = uri.queryParameters.containsKey('reference');
-              final hasTrxref = uri.queryParameters.containsKey('trxref');
-              if (hasReference || hasTrxref) {
-                _paymentCompleted = true;
-                Navigator.of(context).pop({'status': 'success', 'reference': widget.reference});
-              }
-            }
+            // Inject JavaScript to detect payment result
+            _checkPaymentStatus();
           },
           onNavigationRequest: (request) {
-            // Allow Paystack URLs and the callback URL
-            if (request.url.contains('paystack') ||
-                request.url.contains(widget.callbackUrl)) {
+            if (request.url.contains('paystack')) {
               return NavigationDecision.navigate;
             }
             return NavigationDecision.prevent;
@@ -59,6 +50,34 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
       ..loadRequest(Uri.parse(widget.authorizationUrl));
   }
 
+  Future<void> _checkPaymentStatus() async {
+    try {
+      // JavaScript to detect success or failure text on the page
+      final result = await _controller.runJavaScriptReturningResult(
+        "document.body.innerText.includes('Payment Successful') ? 'success' : " +
+        "document.body.innerText.includes('Transaction Successful') ? 'success' : " +
+        "document.body.innerText.includes('Payment Failed') ? 'failed' : " +
+        "document.body.innerText.includes('insufficient') ? 'failed' : 'unknown'"
+      );
+
+      // The result is a JSON string, need to parse it
+      final status = result.toString().replaceAll('"', '').trim();
+
+      if (status == 'success' && !_paymentCompleted) {
+        setState(() => _paymentCompleted = true);
+        // Small delay to let user see the success message briefly
+        await Future.delayed(const Duration(milliseconds: 1500));
+        if (mounted) {
+          Navigator.of(context).pop({'status': 'success', 'reference': widget.reference});
+        }
+      } else if (status == 'failed' && !_paymentFailed) {
+        setState(() => _paymentFailed = true);
+      }
+    } catch (_) {
+      // JavaScript execution might fail on some pages — ignore
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -66,18 +85,29 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.close, color: Colors.black),
-          onPressed: () {
-            Navigator.of(context).pop({
-              'status': _paymentCompleted ? 'success' : 'cancelled',
-              'reference': widget.reference,
-            });
-          },
-        ),
-        title: const Text(
-          'Payment',
-          style: TextStyle(color: Colors.black, fontSize: 16),
+        // Only show X button after payment completes or fails
+        leading: (_paymentCompleted || _paymentFailed)
+            ? IconButton(
+                icon: const Icon(Icons.close, color: Colors.black),
+                onPressed: () {
+                  Navigator.of(context).pop({
+                    'status': _paymentCompleted ? 'success' : 'failed',
+                    'reference': widget.reference,
+                  });
+                },
+              )
+            : const SizedBox.shrink(),
+        title: Text(
+          _paymentCompleted
+              ? 'Payment Successful'
+              : _paymentFailed
+                  ? 'Payment Failed'
+                  : 'Payment',
+          style: TextStyle(
+            color: Colors.black,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         centerTitle: true,
       ),
