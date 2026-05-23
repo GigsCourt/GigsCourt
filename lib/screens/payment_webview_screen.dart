@@ -52,30 +52,29 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
 
   Future<void> _checkPaymentStatus() async {
     try {
-      // JavaScript to detect success or failure text on the page
       final result = await _controller.runJavaScriptReturningResult(
-        "document.body.innerText.includes('Payment Successful') ? 'success' : " +
-        "document.body.innerText.includes('Transaction Successful') ? 'success' : " +
-        "document.body.innerText.includes('Payment Failed') ? 'failed' : " +
-        "document.body.innerText.includes('insufficient') ? 'failed' : 'unknown'"
+        "document.body.innerText.includes('Payment Successful') || document.body.innerText.includes('Transaction Successful')"
       );
-
-      // The result is a JSON string, need to parse it
-      final status = result.toString().replaceAll('"', '').trim();
-
-      if (status == 'success' && !_paymentCompleted) {
+      
+      final resultStr = result.toString().trim().toLowerCase();
+      
+      if (resultStr == 'true' && !_paymentCompleted) {
         setState(() => _paymentCompleted = true);
-        // Small delay to let user see the success message briefly
         await Future.delayed(const Duration(milliseconds: 1500));
         if (mounted) {
           Navigator.of(context).pop({'status': 'success', 'reference': widget.reference});
         }
-      } else if (status == 'failed' && !_paymentFailed) {
-        setState(() => _paymentFailed = true);
+      } else if (resultStr == 'false' && !_paymentCompleted) {
+        // Check for failure
+        final failedResult = await _controller.runJavaScriptReturningResult(
+          "document.body.innerText.includes('failed') || document.body.innerText.includes('insufficient')"
+        );
+        final failedStr = failedResult.toString().trim().toLowerCase();
+        if (failedStr == 'true') {
+          setState(() => _paymentFailed = true);
+        }
       }
-    } catch (_) {
-      // JavaScript execution might fail on some pages — ignore
-    }
+    } catch (_) {}
   }
 
   @override
