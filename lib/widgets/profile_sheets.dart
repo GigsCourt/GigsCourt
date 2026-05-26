@@ -124,7 +124,24 @@ class ProfileSheets {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 8),
+                      // Services pill button
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            editServices(context, uid, List<String>.from(data['services'] ?? []));
+                          },
+                          icon: const Icon(Icons.build_outlined, size: 14),
+                          label: const Text('Services', style: TextStyle(fontSize: 12)),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            minimumSize: Size.zero,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),,
                       ElevatedButton(
                         onPressed: isSaving ? null : () async {
                           if (!formKey.currentState!.validate()) return;
