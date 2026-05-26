@@ -141,7 +141,7 @@ class ProfileSheets {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 20),,
+                      const SizedBox(height: 20),
                       ElevatedButton(
                         onPressed: isSaving ? null : () async {
                           if (!formKey.currentState!.validate()) return;
