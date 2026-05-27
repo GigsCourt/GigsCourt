@@ -84,7 +84,6 @@ async function deleteUserChats(token: string, projectId: string, userId: string)
     const participantIds = participants.map((p: any) => p.stringValue).filter(Boolean);
 
     if (participantIds.includes(userId)) {
-      // Delete only this user's messages from subcollection
       const messagesResponse = await fetch(
         `https://firestore.googleapis.com/v1/${doc.name}/messages`,
         { headers: { "Authorization": `Bearer ${token}` } }
@@ -104,7 +103,6 @@ async function deleteUserChats(token: string, projectId: string, userId: string)
         }
       }
 
-      // Remove user from participants
       const updatedParticipants = participantIds
         .filter((id: string) => id !== userId)
         .map((id: string) => ({ stringValue: id }));
@@ -128,15 +126,24 @@ async function deleteUserChats(token: string, projectId: string, userId: string)
   }
 }
 
-async function deleteFirebaseUser(token: string, apiKey: string, userId: string) {
-  await fetch(
+async function deleteFirebaseUser(apiKey: string, userId: string, idToken: string) {
+  const response = await fetch(
     `https://identitytoolkit.googleapis.com/v1/accounts:delete?key=${apiKey}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ localId: userId }),
+      body: JSON.stringify({ localId: userId, idToken: idToken }),
     }
   );
+
+  const result = await response.json();
+  
+  if (response.status !== 200) {
+    console.error("Firebase Auth deletion failed:", JSON.stringify(result));
+    throw new Error(`Failed to delete Firebase Auth account: ${result.error?.message || 'Unknown error'}`);
+  }
+  
+  console.log("Firebase Auth account deleted successfully for userId:", userId);
 }
 
 async function deleteFromSupabase(userId: string) {
@@ -248,8 +255,8 @@ serve(async (req) => {
     // 3. Delete from Supabase
     await deleteFromSupabase(userId);
 
-    // 4. Delete Firebase Auth user LAST
-    await deleteFirebaseUser(firestoreToken, apiKey, userId);
+    // 4. Delete Firebase Auth user LAST — pass the idToken for authentication
+    await deleteFirebaseUser(apiKey, userId, idToken);
 
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
