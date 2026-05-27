@@ -1,8 +1,11 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import '../theme/app_theme.dart';
+import 'chat_detail_screen.dart';
 import '../utils/error_handler.dart';
 
 class NotificationsScreen extends StatefulWidget {
@@ -97,28 +100,75 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   Future<void> _markAsRead(String id) async {
     await _firestore.collection('notifications').doc(id).update({'read': true});
+    // Update local state immediately so the blue dot disappears
+    if (mounted) {
+      setState(() {
+        final index = _notifications.indexWhere((n) => n['id'] == id);
+        if (index != -1) {
+          _notifications[index]['read'] = true;
+        }
+      });
+    }
+  }
+
+  Map<String, dynamic>? _parseData(dynamic data) {
+    if (data == null) return null;
+    if (data is Map) return Map<String, dynamic>.from(data);
+    if (data is String) {
+      try {
+        final decoded = jsonDecode(data);
+        if (decoded is Map) return Map<String, dynamic>.from(decoded);
+      } catch (_) {}
+    }
+    return null;
   }
 
   void _onNotificationTap(Map<String, dynamic> notification) {
     HapticFeedback.lightImpact();
     _markAsRead(notification['id']);
 
-    final data = notification['data'];
-    String? screen;
-    if (data is Map) {
-      screen = data['screen'] as String?;
-    } else if (data is String) {
-      try {
-        final parsed = Map<String, dynamic>.from(data as Map);
-        screen = parsed['screen'] as String?;
-      } catch (_) {}
+    final parsedData = _parseData(notification['data']);
+    final type = parsedData?['type'] as String?;
+    final screen = parsedData?['screen'] as String?;
+
+    // Route based on notification type first, then screen
+    if (type == 'new_message') {
+      final chatId = parsedData?['chatId'] as String?;
+      if (chatId != null) {
+        // Extract other user's UID from chat ID
+        final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+        final parts = chatId.split('_');
+        final otherUid = parts[0] == currentUid ? parts[1] : parts[0];
+        Navigator.of(context, rootNavigator: true).push(
+          MaterialPageRoute(builder: (_) => ChatDetailScreen(otherUid: otherUid)),
+        );
+        return;
+      }
     }
 
+    if (type == 'review_submitted') {
+      Navigator.of(context, rootNavigator: true).pushNamed('/profile');
+      return;
+    }
+
+    // Fall back to screen-based routing
     if (screen != null) {
-      // Navigate based on screen type
       switch (screen) {
         case 'home':
           Navigator.pop(context);
+          break;
+        case 'chat':
+          final chatId = parsedData?['chatId'] as String?;
+          if (chatId != null) {
+            final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+            final parts = chatId.split('_');
+            final otherUid = parts[0] == currentUid ? parts[1] : parts[0];
+            Navigator.of(context, rootNavigator: true).push(
+              MaterialPageRoute(builder: (_) => ChatDetailScreen(otherUid: otherUid)),
+            );
+          } else {
+            Navigator.pop(context);
+          }
           break;
         case 'edit_services':
         case 'edit_profile':
@@ -128,9 +178,18 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         case 'profile':
           Navigator.of(context, rootNavigator: true).pushNamed('/profile');
           break;
+        case 'gig':
+          final gigId = parsedData?['gigId'] as String?;
+          if (gigId != null) {
+            // Navigate to chat for this gig
+            Navigator.pop(context);
+          }
+          break;
         default:
           Navigator.pop(context);
       }
+    } else {
+      Navigator.pop(context);
     }
   }
 
@@ -213,14 +272,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   margin: const EdgeInsets.only(bottom: 4),
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: read ? Theme.of(context).cardColor : const Color(0xFF1A1F71).withAlpha(13),
+                    color: read ? Theme.of(context).cardColor : AppTheme.royalBlue.withAlpha(13),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Row(
                     children: [
                       if (!read)
                         Container(width: 8, height: 8, margin: const EdgeInsets.only(right: 10),
-                          decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF1A1F71))),
+                          decoration: const BoxDecoration(shape: BoxShape.circle, color: AppTheme.royalBlue)),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
