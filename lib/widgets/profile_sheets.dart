@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import '../services/image_service.dart';
 import '../screens/edit_workspace_screen.dart';
@@ -187,7 +188,10 @@ class ProfileSheets {
       isScrollControlled: true,
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => _EditServicesSheet(uid: uid, currentServices: currentServices),
+      builder: (ctx) => SizedBox(
+        height: MediaQuery.of(ctx).size.height * 0.75,
+        child: SafeArea(child: _EditServicesSheet(uid: uid, currentServices: currentServices)),
+      ),
     );
   }
 
@@ -255,13 +259,70 @@ class _EditServicesSheet extends StatefulWidget {
 }
 
 class _EditServicesSheetState extends State<_EditServicesSheet> {
+  final SupabaseClient _supabase = Supabase.instance.client;
+  final TextEditingController _searchController = TextEditingController();
   late List<String> _selectedServices;
+  List<Map<String, dynamic>> _allServices = [];
+  List<Map<String, dynamic>> _filteredServices = [];
+  bool _isLoading = true;
   bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
     _selectedServices = List<String>.from(widget.currentServices);
+    _fetchServices();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetchServices() async {
+    try {
+      final response = await _supabase
+          .from('services')
+          .select('name, slug, category')
+          .eq('active', true)
+          .order('name');
+
+      if (mounted) {
+        setState(() {
+          _allServices = List<Map<String, dynamic>>.from(response);
+          _filteredServices = _allServices;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _filterServices(String query) {
+    setState(() {
+      if (query.isEmpty) {
+        _filteredServices = _allServices;
+      } else {
+        _filteredServices = _allServices
+            .where((s) =>
+                s['name'].toString().toLowerCase().contains(query.toLowerCase()) ||
+                s['category'].toString().toLowerCase().contains(query.toLowerCase()))
+            .toList();
+      }
+    });
+  }
+
+  void _toggleService(String slug) {
+    HapticFeedback.selectionClick();
+    setState(() {
+      if (_selectedServices.contains(slug)) {
+        _selectedServices.remove(slug);
+      } else {
+        _selectedServices.add(slug);
+      }
+    });
   }
 
   Future<void> _save() async {
@@ -271,7 +332,6 @@ class _EditServicesSheetState extends State<_EditServicesSheet> {
       final oldServices = List<String>.from(widget.currentServices);
       final newServices = List<String>.from(_selectedServices);
 
-      // Decrement removed services
       for (final slug in oldServices) {
         if (!newServices.contains(slug)) {
           await FirebaseFirestore.instance.collection('metadata').doc('service_counts').set({
@@ -280,7 +340,6 @@ class _EditServicesSheetState extends State<_EditServicesSheet> {
         }
       }
 
-      // Increment added services
       for (final slug in newServices) {
         if (!oldServices.contains(slug)) {
           await FirebaseFirestore.instance.collection('metadata').doc('service_counts').set({
@@ -320,28 +379,74 @@ class _EditServicesSheetState extends State<_EditServicesSheet> {
             ],
           ),
         ),
+        // Selected services chips
         if (_selectedServices.isNotEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Wrap(
               spacing: 8, runSpacing: 8,
               children: _selectedServices.map((slug) {
+                final service = _allServices.firstWhere(
+                  (s) => s['slug'] == slug,
+                  orElse: () => {'name': slug},
+                );
                 return Chip(
-                  label: Text(slug.replaceAll('-', ' '), style: const TextStyle(color: Colors.white, fontSize: 12)),
-                  backgroundColor: const Color(0xFF1A1F71),
+                  label: Text((service['name'] ?? slug).toString().replaceAll('-', ' '), style: const TextStyle(color: Colors.white, fontSize: 12)),
+                  backgroundColor: const Color(0xFF2D3BA0),
                   deleteIcon: const Icon(Icons.close, size: 14, color: Colors.white),
-                  onDeleted: () => setState(() => _selectedServices.remove(slug)),
+                  onDeleted: () => _toggleService(slug),
                 );
               }).toList(),
             ),
           ),
         const SizedBox(height: 8),
-        Expanded(
-          child: Center(
-            child: Text('Tap services on your profile to remove them.\nFull service editor coming soon.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Theme.of(context).textTheme.bodySmall?.color, fontSize: 13)),
+        // Search field
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: TextField(
+            controller: _searchController,
+            onChanged: _filterServices,
+            decoration: const InputDecoration(
+              hintText: 'Search services...',
+              prefixIcon: Icon(Icons.search, size: 20),
+              isDense: true,
+            ),
           ),
+        ),
+        const SizedBox(height: 8),
+        // Service list
+        Expanded(
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: _filteredServices.length,
+                  itemBuilder: (context, index) {
+                    final service = _filteredServices[index];
+                    final slug = service['slug'] as String;
+                    final isSelected = _selectedServices.contains(slug);
+
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      title: Text(service['name'], style: const TextStyle(fontSize: 14)),
+                      subtitle: Text(service['category'] ?? '', style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
+                      trailing: Container(
+                        width: 22, height: 22,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: isSelected ? const Color(0xFF2D3BA0) : Colors.transparent,
+                          border: Border.all(
+                            color: isSelected ? const Color(0xFF2D3BA0) : const Color(0xFF6B7280),
+                            width: 2,
+                          ),
+                        ),
+                        child: isSelected ? const Icon(Icons.check, size: 14, color: Colors.white) : null,
+                      ),
+                      onTap: () => _toggleService(slug),
+                    );
+                  },
+                ),
         ),
       ],
     );
