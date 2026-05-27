@@ -17,6 +17,14 @@ class ChatService {
     return '${uids[0]}_${uids[1]}';
   }
 
+  Future<void> _notifyOtherUser(String chatId, String preview) async {
+    final otherUid = _getOtherUid(chatId);
+    // Get sender name from Firestore
+    final senderDoc = await _firestore.collection('profiles').doc(_currentUid).get();
+    final senderName = senderDoc.data()?['name'] ?? 'Someone';
+    await _pushService.sendNewMessage(otherUid, senderName, preview, chatId);
+  }
+
   Future<void> sendMessage(String chatId, String text) async {
     final message = {
       'senderId': _currentUid,
@@ -27,6 +35,7 @@ class ChatService {
     };
     await _firestore.collection('chats').doc(chatId).collection('messages').add(message);
     await _updateChatPreview(chatId, text);
+    _notifyOtherUser(chatId, text);
   }
 
   Future<void> sendImage(String chatId, File imageFile) async {
@@ -41,6 +50,7 @@ class ChatService {
     };
     await _firestore.collection('chats').doc(chatId).collection('messages').add(message);
     await _updateChatPreview(chatId, '📷 Image');
+    _notifyOtherUser(chatId, '📷 Image');
   }
 
   Future<void> sendVoice(String chatId, File voiceFile, double duration) async {
@@ -56,6 +66,7 @@ class ChatService {
     };
     await _firestore.collection('chats').doc(chatId).collection('messages').add(message);
     await _updateChatPreview(chatId, '🎤 Voice message');
+    _notifyOtherUser(chatId, '🎤 Voice message');
   }
 
   Future<void> _updateChatPreview(String chatId, String preview) async {
@@ -98,7 +109,6 @@ class ChatService {
     }
     await batch.commit();
 
-    // Mark chat as read by current user and reset unread count
     await _firestore.collection('chats').doc(chatId).set({
       'readBy': FieldValue.arrayUnion([_currentUid]),
       'unreadCount_$_currentUid': 0,
@@ -109,7 +119,6 @@ class ChatService {
     final ref = _firestore.collection('chats').doc(chatId).collection('messages').doc(messageId);
     if (isOwnMessage) {
       await ref.delete();
-      // Check if this was the last message and update preview
       final remaining = await _firestore
           .collection('chats').doc(chatId).collection('messages')
           .orderBy('createdAt', descending: true)
@@ -135,7 +144,6 @@ class ChatService {
     final user = _auth.currentUser;
     if (user == null) return;
 
-    // Check for existing pending gig
     final existing = await _firestore
         .collection('chats')
         .doc(chatId)
@@ -152,7 +160,6 @@ class ChatService {
     final credits = (profile.data()?['credits'] ?? 0).toInt();
     if (credits < 1) throw Exception('Insufficient credits');
 
-    // Create gig
     final gigRef = await _firestore.collection('gigs').add({
       'providerId': user.uid,
       'clientId': otherUid,
@@ -161,7 +168,6 @@ class ChatService {
       'createdAt': FieldValue.serverTimestamp(),
     });
 
-    // Link gig to chat immediately (use the doc ref ID directly)
     await _firestore.collection('chats').doc(chatId).set({
       'gigId': gigRef.id,
     }, SetOptions(merge: true));
@@ -175,13 +181,11 @@ class ChatService {
     final providerId = gig['providerId'];
     final clientId = gig['clientId'];
 
-    // Read provider's current stats (2 document reads max)
     final providerDoc = await _firestore.collection('profiles').doc(providerId).get();
     final currentRating = (providerDoc.data()?['rating'] ?? 0.0).toDouble();
     final currentReviewCount = (providerDoc.data()?['reviewCount'] ?? 0).toInt();
     final currentCredits = (providerDoc.data()?['credits'] ?? 0).toInt();
 
-    // Check if this client already has a review for this provider
     final existingReviews = await _firestore.collection('reviews')
         .where('providerId', isEqualTo: providerId)
         .where('clientId', isEqualTo: clientId)
@@ -191,9 +195,7 @@ class ChatService {
     int newReviewCount;
 
     if (existingReviews.docs.isNotEmpty) {
-      // Updating an existing review — get old rating
       final oldRating = (existingReviews.docs.first.data()['rating'] ?? 0).toInt();
-      // Incremental average: remove old rating, add new rating, count stays same
       final totalRatingSum = (currentRating * currentReviewCount) - oldRating + rating;
       newAvgRating = totalRatingSum / currentReviewCount;
       newReviewCount = currentReviewCount;
@@ -202,7 +204,6 @@ class ChatService {
         'rating': rating, 'text': text ?? '', 'createdAt': FieldValue.serverTimestamp(),
       });
     } else {
-      // New review — add to total
       final totalRatingSum = (currentRating * currentReviewCount) + rating;
       newReviewCount = currentReviewCount + 1;
       newAvgRating = totalRatingSum / newReviewCount;
@@ -213,7 +214,6 @@ class ChatService {
       });
     }
 
-    // Update provider profile atomically
     await _firestore.collection('profiles').doc(providerId).update({
       'rating': newAvgRating,
       'reviewCount': newReviewCount,
@@ -229,7 +229,10 @@ class ChatService {
       'status': 'completed', 'completedAt': FieldValue.serverTimestamp(),
     });
 
-    await _pushService.sendReviewSubmitted(providerId, clientId, rating);
+    // Get client name and send notification to provider
+    final clientDoc = await _firestore.collection('profiles').doc(clientId).get();
+    final clientName = clientDoc.data()?['name'] ?? 'A client';
+    await _pushService.sendReviewSubmitted(providerId, clientName, rating, providerId);
   }
 
   Future<void> cancelGig(String gigId) async {
