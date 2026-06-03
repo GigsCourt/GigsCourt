@@ -33,7 +33,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   String _bio = '';
   File? _photo;
 
-  List<String> _selectedServices = [];
+  List<Map<String, dynamic>> _serviceCategories = [];
 
   LatLng _workspaceLocation = const LatLng(9.082, 8.6753);
   String _workspaceAddress = '';
@@ -53,11 +53,32 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     setState(() => _currentStep = step);
   }
 
-  Future<void> _updateServiceCounts(List<String> services) async {
-    for (final slug in services) {
-      await _firestore.collection('metadata').doc('service_counts').set({
-        slug: FieldValue.increment(1),
-      }, SetOptions(merge: true));
+  Future<void> _syncProviderItems(List<Map<String, dynamic>> categories) async {
+    // Collect all item names from all categories
+    final itemNames = <String>[];
+    for (final cat in categories) {
+      final items = List<Map<String, dynamic>>.from(cat['items'] ?? []);
+      for (final item in items) {
+        final name = (item['name'] ?? '').toString().trim().toLowerCase();
+        if (name.isNotEmpty) {
+          itemNames.add(name);
+        }
+      }
+    }
+
+    if (itemNames.isEmpty) return;
+
+    // Sync to Supabase provider_items table for search
+    try {
+      for (final name in itemNames) {
+        await _supabase.from('provider_items').upsert({
+          'item_name': name,
+          'category': categories.isNotEmpty ? (categories[0]['name'] ?? 'Other') : 'Other',
+          'created_at': DateTime.now().toIso8601String(),
+        });
+      }
+    } catch (_) {
+      // Search sync is non-critical
     }
   }
 
@@ -82,7 +103,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         'workspace_location':
             'POINT(${_workspaceLocation.longitude} ${_workspaceLocation.latitude})',
         'workspace_address': _workspaceAddress,
-        'services': _selectedServices,
+        'services': _serviceCategories,
         'updated_at': DateTime.now().toIso8601String(),
       });
 
@@ -93,7 +114,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
           'bio': _bio,
           'photoUrl': photoUrl ?? '',
           'photoFileId': photoFileId ?? '',
-          'services': _selectedServices,
+          'serviceCategories': _serviceCategories,
           'workspaceAddress': _workspaceAddress,
           'workspaceLat': _workspaceLocation.latitude,
           'workspaceLng': _workspaceLocation.longitude,
@@ -102,7 +123,6 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
           'gigCount': 0,
           'gigCount7Days': 0,
           'gigCount30Days': 0,
-          'credits': 5,
           'showPhone': true,
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
@@ -112,10 +132,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         rethrow;
       }
 
-      // Update service counts for search popularity
-      if (_selectedServices.isNotEmpty) {
-        await _updateServiceCounts(_selectedServices);
-      }
+      // Sync items to search table
+      await _syncProviderItems(_serviceCategories);
 
       PushService().sendWelcome(user.uid);
 
@@ -165,23 +183,23 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Row(
                 children: List.generate(3, (index) {
-  final isActive = index <= _currentStep;
-  final isCurrent = index == _currentStep;
-  final isDark = Theme.of(context).brightness == Brightness.dark;
-  return AnimatedContainer(
-    duration: const Duration(milliseconds: 250),
-    curve: Curves.easeInOut,
-    margin: const EdgeInsets.only(right: 8),
-    width: isCurrent ? 28 : 8,
-    height: 8,
-    decoration: BoxDecoration(
-      color: isActive
-          ? AppTheme.royalBlue
-          : (isDark ? Colors.white : Colors.black87),
-      borderRadius: BorderRadius.circular(4),
-    ),
-  );
-}),
+                  final isActive = index <= _currentStep;
+                  final isCurrent = index == _currentStep;
+                  final isDark = Theme.of(context).brightness == Brightness.dark;
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 250),
+                    curve: Curves.easeInOut,
+                    margin: const EdgeInsets.only(right: 8),
+                    width: isCurrent ? 28 : 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: isActive
+                          ? AppTheme.royalBlue
+                          : (isDark ? Colors.white : Colors.black87),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  );
+                }),
               ),
             ),
             const SizedBox(height: 16),
@@ -204,9 +222,9 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                     },
                   ),
                   ProfileSetupStep2(
-                    initialServices: _selectedServices,
-                    onChanged: (services) {
-                      _selectedServices = services;
+                    initialCategories: _serviceCategories,
+                    onChanged: (categories) {
+                      _serviceCategories = categories;
                     },
                   ),
                   ProfileSetupStep3(
