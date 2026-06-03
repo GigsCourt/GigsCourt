@@ -1,15 +1,60 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../theme/app_theme.dart';
 
+class ServiceCategory {
+  final String slug;
+  final String name;
+  final List<ServiceItem> items;
+
+  ServiceCategory({required this.slug, required this.name, List<ServiceItem>? items})
+      : items = items ?? [];
+
+  Map<String, dynamic> toJson() => {
+        'slug': slug,
+        'name': name,
+        'items': items.map((i) => i.toJson()).toList(),
+      };
+
+  factory ServiceCategory.fromJson(Map<String, dynamic> json) {
+    return ServiceCategory(
+      slug: json['slug'] ?? '',
+      name: json['name'] ?? '',
+      items: (json['items'] as List<dynamic>?)
+              ?.map((i) => ServiceItem.fromJson(Map<String, dynamic>.from(i)))
+              .toList() ??
+          [],
+    );
+  }
+}
+
+class ServiceItem {
+  final String name;
+  final int price;
+  final String currency;
+
+  ServiceItem({required this.name, required this.price, this.currency = 'NGN'});
+
+  Map<String, dynamic> toJson() => {'name': name, 'price': price, 'currency': currency};
+
+  factory ServiceItem.fromJson(Map<String, dynamic> json) {
+    return ServiceItem(
+      name: json['name'] ?? '',
+      price: (json['price'] ?? 0).toInt(),
+      currency: json['currency'] ?? 'NGN',
+    );
+  }
+}
+
 class ProfileSetupStep2 extends StatefulWidget {
-  final List<String> initialServices;
-  final Function(List<String> services) onChanged;
+  final List<Map<String, dynamic>>? initialCategories;
+  final Function(List<Map<String, dynamic>> categories) onChanged;
 
   const ProfileSetupStep2({
     super.key,
-    required this.initialServices,
+    this.initialCategories,
     required this.onChanged,
   });
 
@@ -20,60 +65,56 @@ class ProfileSetupStep2 extends StatefulWidget {
 class _ProfileSetupStep2State extends State<ProfileSetupStep2> {
   final SupabaseClient _supabase = Supabase.instance.client;
   final TextEditingController _searchController = TextEditingController();
-  final TextEditingController _suggestController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
-  final FocusNode _suggestFocusNode = FocusNode();
-  final LayerLink _layerLink = LayerLink();
-  late List<String> _selectedServices;
-  List<Map<String, dynamic>> _allServices = [];
-  List<Map<String, dynamic>> _filteredSuggestions = [];
+  List<Map<String, dynamic>> _allCategories = [];
+  late List<ServiceCategory> _selectedCategories;
+  Map<String, List<ServiceItem>> _categoryItems = {};
   bool _isLoading = true;
   bool _showDropdown = false;
   OverlayEntry? _dropdownOverlay;
+  List<Map<String, dynamic>> _filteredSuggestions = [];
+  final LayerLink _layerLink = LayerLink();
 
   @override
   void initState() {
     super.initState();
-    _selectedServices = List<String>.from(widget.initialServices);
-    _fetchServices();
-    _searchController.addListener(_onSearchChanged);
+    _selectedCategories = (widget.initialCategories ?? [])
+        .map((c) => ServiceCategory.fromJson(c))
+        .toList();
+    _fetchCategories();
+    _searchController.addListener(() {
+      _filterSuggestions(_searchController.text);
+    });
     _searchFocusNode.addListener(() {
-      if (!_searchFocusNode.hasFocus) {
-        _removeDropdown();
-      }
+      if (!_searchFocusNode.hasFocus) _removeDropdown();
     });
   }
 
   @override
   void dispose() {
     _removeDropdown();
-    _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
-    _suggestController.dispose();
     _searchFocusNode.dispose();
-    _suggestFocusNode.dispose();
     super.dispose();
   }
 
-  void _onSearchChanged() {
-    _filterSuggestions(_searchController.text);
-  }
-
-  Future<void> _fetchServices() async {
+  Future<void> _fetchCategories() async {
     try {
       final response = await _supabase
           .from('services')
           .select('name, slug, category')
           .eq('active', true)
+          .order('category')
           .order('name');
 
-      setState(() {
-        _allServices = List<Map<String, dynamic>>.from(response);
-        _allServices.sort((a, b) => (a['name'] as String).toLowerCase().compareTo((b['name'] as String).toLowerCase()));
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _allCategories = List<Map<String, dynamic>>.from(response);
+          _isLoading = false;
+        });
+      }
     } catch (e) {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -87,17 +128,14 @@ class _ProfileSetupStep2State extends State<ProfileSetupStep2> {
       return;
     }
 
-    final filtered = _allServices.where((s) {
-      final name = s['name'].toString().toLowerCase();
-      final category = s['category'].toString().toLowerCase();
+    final selectedSlugs = _selectedCategories.map((c) => c.slug).toList();
+    final filtered = _allCategories.where((c) {
+      final name = c['name'].toString().toLowerCase();
+      final category = c['category'].toString().toLowerCase();
       final q = query.toLowerCase();
-      // Exclude already selected services from suggestions
-      final slug = s['slug'] as String;
-      return (name.contains(q) || category.contains(q)) && !_selectedServices.contains(slug);
+      final slug = c['slug'] as String;
+      return (name.contains(q) || category.contains(q)) && !selectedSlugs.contains(slug);
     }).toList();
-
-    // Sort alphabetically
-    filtered.sort((a, b) => (a['name'] as String).toLowerCase().compareTo((b['name'] as String).toLowerCase()));
 
     setState(() {
       _filteredSuggestions = filtered;
@@ -135,19 +173,13 @@ class _ProfileSetupStep2State extends State<ProfileSetupStep2> {
                 shrinkWrap: true,
                 itemCount: _filteredSuggestions.length,
                 itemBuilder: (context, index) {
-                  final service = _filteredSuggestions[index];
+                  final cat = _filteredSuggestions[index];
                   return ListTile(
                     dense: true,
-                    title: Text(
-                      service['name'],
-                      style: const TextStyle(fontSize: 13),
-                    ),
-                    subtitle: Text(
-                      service['category'],
-                      style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280)),
-                    ),
+                    title: Text(cat['name'], style: const TextStyle(fontSize: 13)),
+                    subtitle: Text(cat['category'], style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
                     onTap: () {
-                      _toggleService(service['slug'] as String);
+                      _addCategory(cat['name'], cat['slug']);
                       _searchController.clear();
                       _removeDropdown();
                       FocusScope.of(context).unfocus();
@@ -167,62 +199,162 @@ class _ProfileSetupStep2State extends State<ProfileSetupStep2> {
   void _removeDropdown() {
     _dropdownOverlay?.remove();
     _dropdownOverlay = null;
-    if (mounted) {
-      setState(() => _showDropdown = false);
-    }
+    if (mounted) setState(() => _showDropdown = false);
   }
 
-  void _toggleService(String slug) {
+  void _addCategory(String name, String slug) {
     HapticFeedback.selectionClick();
     setState(() {
-      if (_selectedServices.contains(slug)) {
-        _selectedServices.remove(slug);
-      } else {
-        _selectedServices.add(slug);
-      }
-      widget.onChanged(_selectedServices);
-      // Refresh suggestions to exclude selected
-      if (_searchController.text.isNotEmpty) {
-        _filterSuggestions(_searchController.text);
-      }
+      _selectedCategories.add(ServiceCategory(slug: slug, name: name));
+      _notifyParent();
     });
   }
 
-  Future<void> _suggestService() async {
-    final text = _suggestController.text.trim();
-    if (text.isEmpty) return;
-
-    HapticFeedback.lightImpact();
-    try {
-      await _supabase.from('service_suggestions').insert({
-        'name': text,
-        'status': 'pending',
-      });
-
-      _suggestController.clear();
-      FocusScope.of(context).unfocus();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Service suggested! An admin will review it.'),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-      }
-    }
+  void _removeCategory(int index) {
+    HapticFeedback.selectionClick();
+    setState(() {
+      _categoryItems.remove(_selectedCategories[index].slug);
+      _selectedCategories.removeAt(index);
+      _notifyParent();
+    });
   }
 
-  String _slugToName(String slug) {
-    final service = _allServices.firstWhere(
-      (s) => s['slug'] == slug,
-      orElse: () => {'name': slug},
+  void _showAddItemsSheet(int categoryIndex) {
+    final category = _selectedCategories[categoryIndex];
+    final nameController = TextEditingController();
+    final priceController = TextEditingController();
+    final items = List<ServiceItem>.from(_categoryItems[category.slug] ?? category.items);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: 24, right: 24, top: 24,
+                  bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 36, height: 4,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF6B7280).withAlpha(77),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text('${category.name} — Add Items',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Theme.of(ctx).textTheme.bodyLarge?.color)),
+                    const SizedBox(height: 4),
+                    Text('Add the specific services you offer and their prices.',
+                        style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
+                    const SizedBox(height: 16),
+                    // Existing items
+                    if (items.isNotEmpty)
+                      ...items.asMap().entries.map((entry) {
+                        final idx = entry.key;
+                        final item = entry.value;
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                          title: Text(item.name, style: const TextStyle(fontSize: 14)),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text('₦${item.price}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF2D3BA0))),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
+                                onPressed: () {
+                                  items.removeAt(idx);
+                                  setSheetState(() {});
+                                },
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                    const SizedBox(height: 12),
+                    // Add new item
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: TextField(
+                            controller: nameController,
+                            decoration: const InputDecoration(
+                              hintText: 'Service name (e.g. Basic Cut)',
+                              hintStyle: TextStyle(fontSize: 12),
+                              isDense: true,
+                            ),
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 2,
+                          child: TextField(
+                            controller: priceController,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              hintText: 'Price (₦)',
+                              hintStyle: TextStyle(fontSize: 12),
+                              isDense: true,
+                              prefixText: '₦ ',
+                            ),
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        IconButton(
+                          icon: const Icon(Icons.add_circle, color: Color(0xFF2D3BA0)),
+                          onPressed: () {
+                            final name = nameController.text.trim();
+                            final price = int.tryParse(priceController.text.trim());
+                            if (name.isNotEmpty && price != null && price > 0) {
+                              items.add(ServiceItem(name: name, price: price));
+                              nameController.clear();
+                              priceController.clear();
+                              setSheetState(() {});
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: () {
+                        _categoryItems[category.slug] = items;
+                        Navigator.pop(ctx);
+                        setState(() => _notifyParent());
+                      },
+                      child: Text(items.isEmpty ? 'Skip' : 'Save Items (${items.length})'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
-    return service['name'] ?? slug;
+  }
+
+  void _notifyParent() {
+    final categories = _selectedCategories.map((c) {
+      final items = _categoryItems[c.slug] ?? c.items;
+      return ServiceCategory(slug: c.slug, name: c.name, items: items).toJson();
+    }).toList();
+    widget.onChanged(categories);
   }
 
   @override
@@ -237,11 +369,8 @@ class _ProfileSetupStep2State extends State<ProfileSetupStep2> {
             child: TextField(
               controller: _searchController,
               focusNode: _searchFocusNode,
-              onChanged: (value) {
-                // Triggered via listener
-              },
               decoration: const InputDecoration(
-                hintText: 'Search services...',
+                hintText: 'Search categories...',
                 hintStyle: TextStyle(fontSize: 13),
                 prefixIcon: Icon(Icons.search, size: 20),
                 isDense: true,
@@ -250,27 +379,28 @@ class _ProfileSetupStep2State extends State<ProfileSetupStep2> {
             ),
           ),
           const SizedBox(height: 8),
-          // Selected services as chips
-          if (_selectedServices.isNotEmpty)
+          // Selected categories
+          if (_selectedCategories.isNotEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Wrap(
                 spacing: 6,
                 runSpacing: 6,
-                children: _selectedServices.map((slug) {
+                children: _selectedCategories.asMap().entries.map((entry) {
+                  final idx = entry.key;
+                  final cat = entry.value;
+                  final items = _categoryItems[cat.slug] ?? cat.items;
                   return Chip(
                     label: Text(
-                      _slugToName(slug),
+                      items.isNotEmpty ? '${cat.name} (${items.length})' : cat.name,
                       style: const TextStyle(color: Colors.white, fontSize: 12),
                     ),
                     backgroundColor: AppTheme.royalBlue,
                     deleteIcon: const Icon(Icons.close, size: 14, color: Colors.white),
-                    onDeleted: () => _toggleService(slug),
+                    onDeleted: () => _removeCategory(idx),
                     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     visualDensity: VisualDensity.compact,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                   );
                 }).toList(),
               ),
@@ -284,9 +414,7 @@ class _ProfileSetupStep2State extends State<ProfileSetupStep2> {
               decoration: BoxDecoration(
                 color: Theme.of(context).cardColor,
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: Colors.orange.withAlpha(77),
-                ),
+                border: Border.all(color: Colors.orange.withAlpha(77)),
               ),
               child: Row(
                 children: [
@@ -294,12 +422,8 @@ class _ProfileSetupStep2State extends State<ProfileSetupStep2> {
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      'You won\'t appear in searches without at least one service. You can add more later.',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Theme.of(context).textTheme.bodySmall?.color,
-                        height: 1.3,
-                      ),
+                      'Select a category, then add your services with prices. Clients will see these when they search.',
+                      style: TextStyle(fontSize: 11, color: Theme.of(context).textTheme.bodySmall?.color, height: 1.3),
                     ),
                   ),
                 ],
@@ -307,107 +431,61 @@ class _ProfileSetupStep2State extends State<ProfileSetupStep2> {
             ),
           ),
           const SizedBox(height: 12),
-          // Service list
+          // Category list
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : ListView.builder(
                     padding: const EdgeInsets.symmetric(horizontal: 24),
-                    itemCount: _allServices.length + 2,
+                    itemCount: _allCategories.length + 1,
                     itemBuilder: (context, index) {
                       if (index == 0) {
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 6),
                           child: Text(
-                            'Available Services',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Theme.of(context).textTheme.bodySmall?.color,
-                              fontWeight: FontWeight.w600,
-                            ),
+                            'Available Categories',
+                            style: TextStyle(fontSize: 11, color: Theme.of(context).textTheme.bodySmall?.color, fontWeight: FontWeight.w600),
                           ),
                         );
                       }
-                      if (index == _allServices.length + 1) {
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 12, bottom: 24),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                "Can't find your service? Suggest it here.",
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Theme.of(context).textTheme.bodySmall?.color,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: TextField(
-                                      controller: _suggestController,
-                                      focusNode: _suggestFocusNode,
-                                      decoration: const InputDecoration(
-                                        hintText: 'e.g. Drone Pilot',
-                                        hintStyle: TextStyle(fontSize: 12),
-                                        isDense: true,
-                                        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                      ),
-                                      style: const TextStyle(fontSize: 13),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  SizedBox(
-                                    height: 34,
-                                    child: ElevatedButton(
-                                      onPressed: _suggestService,
-                                      style: ElevatedButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                                        textStyle: const TextStyle(fontSize: 12),
-                                      ),
-                                      child: const Text('Suggest'),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        );
-                      }
-                      final service = _allServices[index - 1];
-                      final slug = service['slug'] as String;
-                      final isSelected = _selectedServices.contains(slug);
+                      final cat = _allCategories[index - 1];
+                      final slug = cat['slug'] as String;
+                      final isSelected = _selectedCategories.any((c) => c.slug == slug);
+                      final selectedIdx = _selectedCategories.indexWhere((c) => c.slug == slug);
 
                       return ListTile(
                         contentPadding: EdgeInsets.zero,
                         dense: true,
                         visualDensity: VisualDensity.compact,
-                        title: Text(
-                          service['name'],
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                        subtitle: Text(
-                          service['category'],
-                          style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280)),
-                        ),
-                        trailing: Container(
-                          width: 20,
-                          height: 20,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: isSelected ? AppTheme.royalBlue : Colors.transparent,
-                            border: Border.all(
-                              color: isSelected ? AppTheme.royalBlue : const Color(0xFF6B7280),
-                              width: 2,
-                            ),
-                          ),
-                          child: isSelected
-                              ? const Icon(Icons.check, size: 12, color: Colors.white)
-                              : null,
-                        ),
+                        title: Text(cat['name'], style: const TextStyle(fontSize: 13)),
+                        subtitle: Text(cat['category'], style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
+                        trailing: isSelected
+                            ? TextButton(
+                                onPressed: () => _showAddItemsSheet(selectedIdx),
+                                child: Text(
+                                  '${(_categoryItems[slug] ?? _selectedCategories[selectedIdx].items).length} items',
+                                  style: const TextStyle(fontSize: 11),
+                                ),
+                              )
+                            : Container(
+                                width: 20, height: 20,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.transparent,
+                                  border: Border.all(color: const Color(0xFF6B7280), width: 2),
+                                ),
+                              ),
                         onTap: () {
-                          _toggleService(slug);
+                          if (isSelected) {
+                            _showAddItemsSheet(selectedIdx);
+                          } else {
+                            _addCategory(cat['name'], slug);
+                            // Open items sheet immediately after adding
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              final newIdx = _selectedCategories.indexWhere((c) => c.slug == slug);
+                              if (newIdx != -1) _showAddItemsSheet(newIdx);
+                            });
+                          }
                           FocusScope.of(context).unfocus();
                         },
                       );
