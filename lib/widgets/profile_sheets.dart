@@ -510,9 +510,10 @@ class _EditServicesSheetState extends State<_EditServicesSheet> {
         for (final item in items) {
           final itemName = (item['name'] ?? '').toString().trim().toLowerCase();
           if (itemName.isNotEmpty) {
-            await _supabase.from('provider_items').upsert({
+                        await _supabase.from('provider_items').upsert({
               'item_name': itemName,
               'category': cat['name'] ?? 'Other',
+              'provider_id': widget.uid,
               'created_at': DateTime.now().toIso8601String(),
             });
           }
