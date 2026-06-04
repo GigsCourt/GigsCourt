@@ -53,8 +53,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     setState(() => _currentStep = step);
   }
 
-  Future<void> _syncProviderItems(List<Map<String, dynamic>> categories) async {
-    // Collect all item names from all categories
+  Future<void> _syncProviderItems(List<Map<String, dynamic>> categories, String providerId) async {
     final itemNames = <String>[];
     for (final cat in categories) {
       final items = List<Map<String, dynamic>>.from(cat['items'] ?? []);
@@ -68,18 +67,16 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
 
     if (itemNames.isEmpty) return;
 
-    // Sync to Supabase provider_items table for search
     try {
       for (final name in itemNames) {
         await _supabase.from('provider_items').upsert({
           'item_name': name,
           'category': categories.isNotEmpty ? (categories[0]['name'] ?? 'Other') : 'Other',
+          'provider_id': providerId,
           'created_at': DateTime.now().toIso8601String(),
         });
       }
-    } catch (_) {
-      // Search sync is non-critical
-    }
+    } catch (_) {}
   }
 
   Future<void> _completeSetup() async {
@@ -132,8 +129,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         rethrow;
       }
 
-      // Sync items to search table
-      await _syncProviderItems(_serviceCategories);
+      await _syncProviderItems(_serviceCategories, user.uid);
 
       PushService().sendWelcome(user.uid);
 
