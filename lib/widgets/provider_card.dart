@@ -120,16 +120,33 @@ class ProviderCard extends StatelessWidget {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      _formatServices(provider.services),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white.withAlpha(179),
-                        fontSize: 11,
+                    if (provider.minPrice != null) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        provider.minPrice == provider.maxPrice || provider.maxPrice == null
+                            ? '₦${provider.minPrice}'
+                            : '₦${provider.minPrice} - ₦${provider.maxPrice}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
+                    ],
+                    if (provider.services.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        _formatServices(provider.services),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withAlpha(179),
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 3),
                     Text(
                       '${_formatDistance(provider.distance)} · ${provider.gigCount30Days} gigs this month',
