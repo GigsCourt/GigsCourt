@@ -97,18 +97,26 @@ class _SearchScreenState extends State<SearchScreen> {
     } catch (_) {}
   }
 
-  Future<void> _fetchSuggestions(String query) async {
+   Future<void> _fetchSuggestions(String query) async {
     try {
       final response = await _supabase
-          .from('services')
-          .select('name, slug')
-          .eq('active', true)
-          .ilike('name', '%$query%')
+          .from('provider_items')
+          .select('item_name')
+          .ilike('item_name', '%$query%')
           .limit(6);
 
       if (mounted) {
+        final unique = <String>{};
+        final suggestions = <Map<String, dynamic>>[];
+        for (final item in List<Map<String, dynamic>>.from(response)) {
+          final name = (item['item_name'] ?? '').toString();
+          if (name.isNotEmpty && !unique.contains(name)) {
+            unique.add(name);
+            suggestions.add({'name': name, 'slug': name});
+          }
+        }
         setState(() {
-          _suggestions = List<Map<String, dynamic>>.from(response);
+          _suggestions = suggestions;
           _showSuggestions = _suggestions.isNotEmpty;
         });
       }
@@ -116,7 +124,6 @@ class _SearchScreenState extends State<SearchScreen> {
       setState(() => _showSuggestions = false);
     }
   }
-
   Future<void> _search({String? cursor}) async {
     if (_searchQuery.isEmpty || _userLocation == null) return;
     HapticFeedback.lightImpact();
