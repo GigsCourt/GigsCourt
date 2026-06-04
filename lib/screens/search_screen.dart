@@ -10,7 +10,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../services/location_service.dart';
 import '../services/home_service.dart';
 import '../theme/app_theme.dart';
-import '../widgets/provider_bottom_sheet.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -243,16 +242,11 @@ class _SearchScreenState extends State<SearchScreen> {
     });
   }
 
-  void _onMarkerTap(ProviderCardData provider) {
+    void _onMarkerTap(ProviderCardData provider) {
     HapticFeedback.lightImpact();
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => ProviderBottomSheet(provider: provider),
-    );
+    Navigator.of(context, rootNavigator: true).pushNamed('/profile', arguments: provider.uid);
   }
-
+  
   void _onMarkerLongPress(ProviderCardData provider) {
     HapticFeedback.mediumImpact();
     if (_userLocation == null) return;
