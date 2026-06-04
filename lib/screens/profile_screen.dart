@@ -138,11 +138,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(width: 8),
                 Text(
                   _profileData?['name'] ?? '',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Theme.of(context).textTheme.bodyLarge?.color,
-                  ),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Theme.of(context).textTheme.bodyLarge?.color),
                 ),
               ],
             )
@@ -182,6 +178,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _buildStatsRow(),
               const SizedBox(height: 24),
               _buildDetailsSection(),
+              const SizedBox(height: 24),
+              _buildServicesSection(),
               const SizedBox(height: 24),
               _buildActionButtons(),
               const SizedBox(height: 24),
@@ -280,16 +278,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                value,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).textTheme.bodyLarge?.color,
-                ),
-              ),
-              if (isTappable)
-                const Icon(Icons.chevron_right, size: 14, color: Color(0xFF6B7280)),
+              Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Theme.of(context).textTheme.bodyLarge?.color)),
+              if (isTappable) const Icon(Icons.chevron_right, size: 14, color: Color(0xFF6B7280)),
             ],
           ),
           const SizedBox(height: 4),
@@ -307,7 +297,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final gigCount30Days = (_profileData?['gigCount30Days'] ?? 0).toInt();
     final gigCount7Days = (_profileData?['gigCount7Days'] ?? 0).toInt();
     final address = _profileData?['workspaceAddress'] ?? '';
-    final services = List<String>.from(_profileData?['services'] ?? []);
     final createdAt = _profileData?['createdAt'] as Timestamp?;
 
     return Column(
@@ -337,7 +326,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
         const SizedBox(height: 8),
         Text('$gigCount30Days gigs this month', style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280))),
-        if (address.isNotEmpty && _isOwnProfile) ...[
+        if (address.isNotEmpty) ...[
           const SizedBox(height: 8),
           Row(
             children: [
@@ -345,32 +334,80 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(width: 4),
               Flexible(child: Text(address, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280)))),
             ],
-          ),
-        ],
-        if (address.isNotEmpty && !_isOwnProfile) ...[
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              const Icon(Icons.location_on_outlined, size: 14, color: Color(0xFF6B7280)),
-              const SizedBox(width: 4),
-              Flexible(child: Text(address, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280)))),
-            ],
-          ),
-        ],
-        if (services.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          GestureDetector(
-            onTap: _isOwnProfile ? () => ProfileSheets.editServices(context, _currentUid, services) : null,
-            child: Text(
-              services.map((s) => s.replaceAll('-', ' ')).join(', '),
-              style: TextStyle(fontSize: 13, color: _isOwnProfile ? AppTheme.royalBlue : const Color(0xFF6B7280)),
-            ),
           ),
         ],
         if (createdAt != null) ...[
           const SizedBox(height: 8),
           Text('Joined ${DateFormat('dd/MM/yyyy').format(createdAt.toDate())}', style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
         ],
+      ],
+    );
+  }
+
+  Widget _buildServicesSection() {
+    final serviceCategories = List<Map<String, dynamic>>.from(_profileData?['serviceCategories'] ?? []);
+
+    if (serviceCategories.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          onTap: _isOwnProfile
+              ? () => ProfileSheets.editServices(context, _currentUid, serviceCategories)
+              : null,
+          child: Row(
+            children: [
+              Text('Services', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Theme.of(context).textTheme.bodyLarge?.color)),
+              if (_isOwnProfile) ...[
+                const SizedBox(width: 4),
+                Icon(Icons.edit, size: 14, color: AppTheme.royalBlue),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        ...serviceCategories.map((cat) {
+          final items = List<Map<String, dynamic>>.from(cat['items'] ?? []);
+          final categoryName = cat['name'] ?? '';
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppTheme.royalBlue.withAlpha(26),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(categoryName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.royalBlue)),
+                ),
+                const SizedBox(height: 6),
+                if (items.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 8),
+                    child: Text('No items added yet', style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
+                  )
+                else
+                  ...items.map((item) {
+                    return Padding(
+                      padding: const EdgeInsets.only(left: 8, bottom: 4),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Text(item['name'] ?? '', style: TextStyle(fontSize: 13, color: Theme.of(context).textTheme.bodyLarge?.color)),
+                          ),
+                          Text('₦${(item['price'] ?? 0).toInt()}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.royalBlue)),
+                        ],
+                      ),
+                    );
+                  }),
+              ],
+            ),
+          );
+        }),
       ],
     );
   }
@@ -434,9 +471,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildWorkPhotos() {
-    final workPhotos = List<Map<String, dynamic>>.from(
-      (_profileData?['workPhotos'] as List<dynamic>?) ?? [],
-    );
+    final workPhotos = List<Map<String, dynamic>>.from((_profileData?['workPhotos'] as List<dynamic>?) ?? []);
     final displayPhotos = workPhotos.reversed.toList();
 
     return Column(
@@ -451,10 +486,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 onPressed: _isUploadingPhotos ? null : () => _addWorkPhotos(workPhotos),
                 icon: const Icon(Icons.add, size: 14),
                 label: const Text('Add Photos', style: TextStyle(fontSize: 12)),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  minimumSize: Size.zero,
-                ),
+                style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), minimumSize: Size.zero),
               ),
             ),
           ),
@@ -462,10 +494,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (workPhotos.isEmpty)
           Container(
             padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Theme.of(context).cardColor,
-              borderRadius: BorderRadius.circular(12),
-            ),
+            decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: BorderRadius.circular(12)),
             child: Center(
               child: Text(
                 _isOwnProfile ? 'Add photos so clients can see your work.\nThis helps them trust you.' : 'No work photos yet.',
@@ -480,15 +509,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: GridView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                crossAxisSpacing: 2,
-                mainAxisSpacing: 2,
-              ),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 2, mainAxisSpacing: 2),
               itemCount: displayPhotos.length,
-              itemBuilder: (context, index) {
-                return _buildWorkPhoto(displayPhotos[index], index, workPhotos);
-              },
+              itemBuilder: (context, index) => _buildWorkPhoto(displayPhotos[index], index, workPhotos),
             ),
           ),
       ],
@@ -503,10 +526,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         imageUrl: photo['url'] ?? '',
         fit: BoxFit.cover,
         placeholder: (_, __) => Container(color: Theme.of(context).cardColor),
-        errorWidget: (_, __, ___) => Container(
-          color: Theme.of(context).cardColor,
-          child: Icon(Icons.broken_image, color: Theme.of(context).textTheme.bodySmall?.color),
-        ),
+        errorWidget: (_, __, ___) => Container(color: Theme.of(context).cardColor, child: Icon(Icons.broken_image, color: Theme.of(context).textTheme.bodySmall?.color)),
       ),
     );
   }
@@ -516,34 +536,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('You can add up to 15 photos.')));
       return;
     }
-
     final remaining = 15 - existingPhotos.length;
     final pickedFiles = await _picker.pickMultiImage(imageQuality: 85, limit: remaining);
     if (pickedFiles == null || pickedFiles.isEmpty) return;
-
     HapticFeedback.mediumImpact();
     setState(() => _isUploadingPhotos = true);
-
     try {
       final newPhotos = List<Map<String, dynamic>>.from(existingPhotos);
-
       for (int i = 0; i < pickedFiles.length; i++) {
         final file = File(pickedFiles[i].path);
         final result = await _imageService.uploadToImageKit(file, _currentUid, folder: '/work_photos/$_currentUid');
         newPhotos.add({'url': result.url, 'fileId': result.fileId});
       }
-
-      await _firestore.collection('profiles').doc(_currentUid).update({
-        'workPhotos': newPhotos,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-
+      await _firestore.collection('profiles').doc(_currentUid).update({'workPhotos': newPhotos, 'updatedAt': FieldValue.serverTimestamp()});
       HapticFeedback.heavyImpact();
     } catch (e) {
       HapticFeedback.vibrate();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
     } finally {
       if (mounted) setState(() => _isUploadingPhotos = false);
     }
@@ -565,15 +574,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               try {
                 final updatedPhotos = List<Map<String, dynamic>>.from(allPhotos);
                 updatedPhotos.removeWhere((p) => p['fileId'] == photo['fileId']);
-                await _firestore.collection('profiles').doc(_currentUid).update({
-                  'workPhotos': updatedPhotos,
-                  'updatedAt': FieldValue.serverTimestamp(),
-                });
+                await _firestore.collection('profiles').doc(_currentUid).update({'workPhotos': updatedPhotos, 'updatedAt': FieldValue.serverTimestamp()});
                 HapticFeedback.heavyImpact();
               } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Delete failed: $e')));
-                }
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Delete failed: $e')));
               }
             },
             child: const Text('Delete', style: TextStyle(color: Colors.red)),
@@ -589,16 +593,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       MaterialPageRoute(
         builder: (_) => Scaffold(
           backgroundColor: Colors.black,
-          appBar: AppBar(
-            backgroundColor: Colors.black,
-            iconTheme: const IconThemeData(color: Colors.white),
-          ),
-          body: Center(
-            child: CachedNetworkImage(
-              imageUrl: photo['url'] ?? '',
-              fit: BoxFit.contain,
-            ),
-          ),
+          appBar: AppBar(backgroundColor: Colors.black, iconTheme: const IconThemeData(color: Colors.white)),
+          body: Center(child: CachedNetworkImage(imageUrl: photo['url'] ?? '', fit: BoxFit.contain)),
         ),
       ),
     );
@@ -611,11 +607,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Row(children: [
-            Container(width: 72, height: 72, decoration: BoxDecoration(color: Colors.grey.shade400, shape: BoxShape.circle)),
-            const SizedBox(width: 24),
-            Expanded(child: Container(height: 14, color: Colors.grey.shade400)),
-          ]),
+          Row(children: [Container(width: 72, height: 72, decoration: BoxDecoration(color: Colors.grey.shade400, shape: BoxShape.circle)), const SizedBox(width: 24), Expanded(child: Container(height: 14, color: Colors.grey.shade400))]),
           const SizedBox(height: 24),
           Container(height: 14, width: 200, color: Colors.grey.shade400),
           const SizedBox(height: 8),
