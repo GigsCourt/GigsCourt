@@ -171,13 +171,31 @@ class _SearchScreenState extends State<SearchScreen> {
 
         for (final doc in snapshot.docs) {
           final data = doc.data();
+                   // Get category names and price range
+          final categories = List<Map<String, dynamic>>.from(data['serviceCategories'] ?? []);
+          final catNames = categories.map((c) => (c['name'] ?? '').toString()).where((n) => n.isNotEmpty).toList();
+          int? minPrice;
+          int? maxPrice;
+          for (final cat in categories) {
+            final items = List<Map<String, dynamic>>.from(cat['items'] ?? []);
+            for (final item in items) {
+              final price = (item['price'] ?? 0).toInt();
+              if (price > 0) {
+                if (minPrice == null || price < minPrice) minPrice = price;
+                if (maxPrice == null || price > maxPrice) maxPrice = price;
+              }
+            }
+          }
+
           profiles.add(ProviderCardData(
             uid: doc.id,
             name: data['name'] ?? '',
             photoUrl: data['photoUrl'] ?? '',
             rating: (data['rating'] ?? 0.0).toDouble(),
             reviewCount: (data['reviewCount'] ?? 0).toInt(),
-            services: List<String>.from(data['services'] ?? []),
+            services: catNames,
+            minPrice: minPrice,
+            maxPrice: maxPrice,
             distance: distances[doc.id] ?? 0.0,
             gigCount: (data['gigCount'] ?? 0).toInt(),
             gigCount7Days: (data['gigCount7Days'] ?? 0).toInt(),
