@@ -9,6 +9,24 @@ import '../screens/edit_workspace_screen.dart';
 import '../screens/settings_screen.dart';
 import '../utils/error_handler.dart';
 
+class ServiceItem {
+  final String name;
+  final int price;
+  final String currency;
+
+  ServiceItem({required this.name, required this.price, this.currency = 'NGN'});
+
+  Map<String, dynamic> toJson() => {'name': name, 'price': price, 'currency': currency};
+
+  factory ServiceItem.fromJson(Map<String, dynamic> json) {
+    return ServiceItem(
+      name: json['name'] ?? '',
+      price: (json['price'] ?? 0).toInt(),
+      currency: json['currency'] ?? 'NGN',
+    );
+  }
+}
+
 class ProfileSheets {
   // Edit Profile bottom sheet
   static void editProfile(BuildContext context, String uid, Map<String, dynamic> data) {
@@ -132,7 +150,8 @@ class ProfileSheets {
                         child: OutlinedButton.icon(
                           onPressed: () {
                             Navigator.pop(ctx);
-                            editServices(context, uid, List<String>.from(data['services'] ?? []));
+                            final categories = List<Map<String, dynamic>>.from(data['serviceCategories'] ?? []);
+                            editServices(context, uid, categories);
                           },
                           icon: const Icon(Icons.build_outlined, size: 14),
                           label: const Text('Services', style: TextStyle(fontSize: 12)),
@@ -182,15 +201,15 @@ class ProfileSheets {
   }
 
   // Edit Services bottom sheet
-  static void editServices(BuildContext context, String uid, List<String> currentServices) {
+  static void editServices(BuildContext context, String uid, List<Map<String, dynamic>> currentCategories) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => SizedBox(
-        height: MediaQuery.of(ctx).size.height * 0.75,
-        child: SafeArea(child: _EditServicesSheet(uid: uid, currentServices: currentServices)),
+        height: MediaQuery.of(ctx).size.height * 0.85,
+        child: SafeArea(child: _EditServicesSheet(uid: uid, currentCategories: currentCategories)),
       ),
     );
   }
@@ -252,8 +271,8 @@ class ProfileSheets {
 // -- Edit Services Sheet --
 class _EditServicesSheet extends StatefulWidget {
   final String uid;
-  final List<String> currentServices;
-  const _EditServicesSheet({required this.uid, required this.currentServices});
+  final List<Map<String, dynamic>> currentCategories;
+  const _EditServicesSheet({required this.uid, required this.currentCategories});
   @override
   State<_EditServicesSheet> createState() => _EditServicesSheetState();
 }
@@ -261,17 +280,25 @@ class _EditServicesSheet extends StatefulWidget {
 class _EditServicesSheetState extends State<_EditServicesSheet> {
   final SupabaseClient _supabase = Supabase.instance.client;
   final TextEditingController _searchController = TextEditingController();
-  late List<String> _selectedServices;
-  List<Map<String, dynamic>> _allServices = [];
-  List<Map<String, dynamic>> _filteredServices = [];
+  late List<Map<String, dynamic>> _selectedCategories;
+  Map<String, List<ServiceItem>> _categoryItems = {};
+  List<Map<String, dynamic>> _allCategories = [];
+  List<Map<String, dynamic>> _filteredCategories = [];
   bool _isLoading = true;
   bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
-    _selectedServices = List<String>.from(widget.currentServices);
-    _fetchServices();
+    _selectedCategories = List<Map<String, dynamic>>.from(widget.currentCategories);
+    for (final cat in _selectedCategories) {
+      final items = (cat['items'] as List<dynamic>?)
+              ?.map((i) => ServiceItem.fromJson(Map<String, dynamic>.from(i)))
+              .toList() ??
+          [];
+      _categoryItems[cat['slug'] ?? ''] = items;
+    }
+    _fetchCategories();
   }
 
   @override
@@ -280,18 +307,17 @@ class _EditServicesSheetState extends State<_EditServicesSheet> {
     super.dispose();
   }
 
-  Future<void> _fetchServices() async {
+  Future<void> _fetchCategories() async {
     try {
       final response = await _supabase
           .from('services')
           .select('name, slug, category')
           .eq('active', true)
           .order('name');
-
       if (mounted) {
         setState(() {
-          _allServices = List<Map<String, dynamic>>.from(response);
-          _filteredServices = _allServices;
+          _allCategories = List<Map<String, dynamic>>.from(response);
+          _filteredCategories = _allCategories;
           _isLoading = false;
         });
       }
@@ -300,12 +326,12 @@ class _EditServicesSheetState extends State<_EditServicesSheet> {
     }
   }
 
-  void _filterServices(String query) {
+  void _filterCategories(String query) {
     setState(() {
       if (query.isEmpty) {
-        _filteredServices = _allServices;
+        _filteredCategories = _allCategories;
       } else {
-        _filteredServices = _allServices
+        _filteredCategories = _allCategories
             .where((s) =>
                 s['name'].toString().toLowerCase().contains(query.toLowerCase()) ||
                 s['category'].toString().toLowerCase().contains(query.toLowerCase()))
@@ -314,44 +340,185 @@ class _EditServicesSheetState extends State<_EditServicesSheet> {
     });
   }
 
-  void _toggleService(String slug) {
+  void _addCategory(String name, String slug) {
     HapticFeedback.selectionClick();
     setState(() {
-      if (_selectedServices.contains(slug)) {
-        _selectedServices.remove(slug);
-      } else {
-        _selectedServices.add(slug);
-      }
+      _selectedCategories.add({'slug': slug, 'name': name, 'items': []});
+      _categoryItems[slug] = [];
     });
+  }
+
+  void _removeCategory(int index) {
+    HapticFeedback.selectionClick();
+    final slug = _selectedCategories[index]['slug'] ?? '';
+    setState(() {
+      _categoryItems.remove(slug);
+      _selectedCategories.removeAt(index);
+    });
+  }
+
+  void _showAddItemsSheet(int categoryIndex) {
+    final cat = _selectedCategories[categoryIndex];
+    final slug = cat['slug'] ?? '';
+    final name = cat['name'] ?? '';
+    final nameController = TextEditingController();
+    final priceController = TextEditingController();
+    final items = List<ServiceItem>.from(_categoryItems[slug] ?? []);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: 24, right: 24, top: 24,
+                  bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 36, height: 4,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF6B7280).withAlpha(77),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text('$name — Add Items',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Theme.of(ctx).textTheme.bodyLarge?.color)),
+                    const SizedBox(height: 4),
+                    const Text('Add the specific services you offer and their prices.',
+                        style: TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
+                    const SizedBox(height: 16),
+                    if (items.isNotEmpty)
+                      ...items.asMap().entries.map((entry) {
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                          title: Text(entry.value.name, style: const TextStyle(fontSize: 14)),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text('₦${entry.value.price}',
+                                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF2D3BA0))),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
+                                onPressed: () {
+                                  items.removeAt(entry.key);
+                                  setSheetState(() {});
+                                },
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: TextField(
+                            controller: nameController,
+                            decoration: const InputDecoration(
+                              hintText: 'Service name (e.g. Basic Cut)',
+                              hintStyle: TextStyle(fontSize: 12),
+                              isDense: true,
+                            ),
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 2,
+                          child: TextField(
+                            controller: priceController,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              hintText: 'Price (₦)',
+                              hintStyle: TextStyle(fontSize: 12),
+                              isDense: true,
+                              prefixText: '₦ ',
+                            ),
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        IconButton(
+                          icon: const Icon(Icons.add_circle, color: Color(0xFF2D3BA0)),
+                          onPressed: () {
+                            final itemName = nameController.text.trim();
+                            final price = int.tryParse(priceController.text.trim());
+                            if (itemName.isNotEmpty && price != null && price > 0) {
+                              items.add(ServiceItem(name: itemName, price: price));
+                              nameController.clear();
+                              priceController.clear();
+                              setSheetState(() {});
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: () {
+                        _categoryItems[slug] = items;
+                        Navigator.pop(ctx);
+                        setState(() {});
+                      },
+                      child: Text(items.isEmpty ? 'Skip' : 'Save Items (${items.length})'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   Future<void> _save() async {
     HapticFeedback.mediumImpact();
     setState(() => _isSaving = true);
     try {
-      final oldServices = List<String>.from(widget.currentServices);
-      final newServices = List<String>.from(_selectedServices);
-
-      for (final slug in oldServices) {
-        if (!newServices.contains(slug)) {
-          await FirebaseFirestore.instance.collection('metadata').doc('service_counts').set({
-            slug: FieldValue.increment(-1),
-          }, SetOptions(merge: true));
-        }
-      }
-
-      for (final slug in newServices) {
-        if (!oldServices.contains(slug)) {
-          await FirebaseFirestore.instance.collection('metadata').doc('service_counts').set({
-            slug: FieldValue.increment(1),
-          }, SetOptions(merge: true));
-        }
-      }
+      final finalCategories = _selectedCategories.map((cat) {
+        final slug = cat['slug'] ?? '';
+        final items = _categoryItems[slug] ?? [];
+        return {
+          'slug': slug,
+          'name': cat['name'] ?? '',
+          'items': items.map((i) => i.toJson()).toList(),
+        };
+      }).toList();
 
       await FirebaseFirestore.instance.collection('profiles').doc(widget.uid).update({
-        'services': _selectedServices,
+        'serviceCategories': finalCategories,
         'updatedAt': FieldValue.serverTimestamp(),
       });
+
+      for (final cat in finalCategories) {
+        final items = List<Map<String, dynamic>>.from(cat['items'] ?? []);
+        for (final item in items) {
+          final itemName = (item['name'] ?? '').toString().trim().toLowerCase();
+          if (itemName.isNotEmpty) {
+            await _supabase.from('provider_items').upsert({
+              'item_name': itemName,
+              'category': cat['name'] ?? 'Other',
+              'created_at': DateTime.now().toIso8601String(),
+            });
+          }
+        }
+      }
+
       HapticFeedback.heavyImpact();
       if (mounted) Navigator.pop(context);
     } catch (e) {
@@ -379,71 +546,76 @@ class _EditServicesSheetState extends State<_EditServicesSheet> {
             ],
           ),
         ),
-        // Selected services chips
-        if (_selectedServices.isNotEmpty)
+        if (_selectedCategories.isNotEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Wrap(
-              spacing: 8, runSpacing: 8,
-              children: _selectedServices.map((slug) {
-                final service = _allServices.firstWhere(
-                  (s) => s['slug'] == slug,
-                  orElse: () => {'name': slug},
-                );
+              spacing: 6, runSpacing: 6,
+              children: _selectedCategories.asMap().entries.map((entry) {
+                final idx = entry.key;
+                final slug = entry.value['slug'] ?? '';
+                final name = entry.value['name'] ?? '';
+                final items = _categoryItems[slug] ?? [];
                 return Chip(
-                  label: Text((service['name'] ?? slug).toString().replaceAll('-', ' '), style: const TextStyle(color: Colors.white, fontSize: 12)),
+                  label: Text(items.isNotEmpty ? '$name (${items.length})' : name, style: const TextStyle(color: Colors.white, fontSize: 12)),
                   backgroundColor: const Color(0xFF2D3BA0),
                   deleteIcon: const Icon(Icons.close, size: 14, color: Colors.white),
-                  onDeleted: () => _toggleService(slug),
+                  onDeleted: () => _removeCategory(idx),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                 );
               }).toList(),
             ),
           ),
         const SizedBox(height: 8),
-        // Search field
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: TextField(
             controller: _searchController,
-            onChanged: _filterServices,
-            decoration: const InputDecoration(
-              hintText: 'Search services...',
-              prefixIcon: Icon(Icons.search, size: 20),
-              isDense: true,
-            ),
+            onChanged: _filterCategories,
+            decoration: const InputDecoration(hintText: 'Search categories...', prefixIcon: Icon(Icons.search, size: 20), isDense: true),
           ),
         ),
         const SizedBox(height: 8),
-        // Service list
         Expanded(
           child: _isLoading
               ? const Center(child: CircularProgressIndicator())
               : ListView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: _filteredServices.length,
+                  itemCount: _filteredCategories.length,
                   itemBuilder: (context, index) {
-                    final service = _filteredServices[index];
-                    final slug = service['slug'] as String;
-                    final isSelected = _selectedServices.contains(slug);
+                    final cat = _filteredCategories[index];
+                    final slug = cat['slug'] as String;
+                    final isSelected = _selectedCategories.any((c) => c['slug'] == slug);
+                    final selectedIdx = _selectedCategories.indexWhere((c) => c['slug'] == slug);
 
                     return ListTile(
                       contentPadding: EdgeInsets.zero,
                       dense: true,
-                      title: Text(service['name'], style: const TextStyle(fontSize: 14)),
-                      subtitle: Text(service['category'] ?? '', style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
-                      trailing: Container(
-                        width: 22, height: 22,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: isSelected ? const Color(0xFF2D3BA0) : Colors.transparent,
-                          border: Border.all(
-                            color: isSelected ? const Color(0xFF2D3BA0) : const Color(0xFF6B7280),
-                            width: 2,
-                          ),
-                        ),
-                        child: isSelected ? const Icon(Icons.check, size: 14, color: Colors.white) : null,
-                      ),
-                      onTap: () => _toggleService(slug),
+                      title: Text(cat['name'], style: const TextStyle(fontSize: 14)),
+                      subtitle: Text(cat['category'] ?? '', style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
+                      trailing: isSelected
+                          ? TextButton(
+                              onPressed: () => _showAddItemsSheet(selectedIdx),
+                              child: Text('${(_categoryItems[slug] ?? []).length} items', style: const TextStyle(fontSize: 11)),
+                            )
+                          : Container(
+                              width: 22, height: 22,
+                              decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: const Color(0xFF6B7280), width: 2)),
+                            ),
+                      onTap: () {
+                        if (isSelected) {
+                          _showAddItemsSheet(selectedIdx);
+                        } else {
+                          _addCategory(cat['name'], slug);
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            final newIdx = _selectedCategories.indexWhere((c) => c['slug'] == slug);
+                            if (newIdx != -1) _showAddItemsSheet(newIdx);
+                          });
+                        }
+                        FocusScope.of(context).unfocus();
+                      },
                     );
                   },
                 ),
