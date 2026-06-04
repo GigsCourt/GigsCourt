@@ -209,7 +209,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildStatsRow() {
     final gigCount = (_profileData?['gigCount'] ?? 0).toInt();
     final rating = (_profileData?['rating'] ?? 0.0).toDouble();
-    final credits = (_profileData?['credits'] ?? 0).toInt();
 
     return Row(
       children: [
@@ -245,13 +244,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 label: 'Rating',
                 onTap: () => ProfileSheets.reviews(context, _currentUid),
               ),
-              if (_isOwnProfile)
-                _buildStat(
-                  value: credits.toString(),
-                  icon: Icons.monetization_on_outlined,
-                  label: 'Credits',
-                  onTap: () => ProfileSheets.credits(context, _currentUid),
-                ),
             ],
           ),
         ),
@@ -414,28 +406,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildActionButtons() {
     if (_isOwnProfile) {
-      return Row(
-        children: [
-          Expanded(
-            child: ElevatedButton(
-              onPressed: () {
-                HapticFeedback.mediumImpact();
-                ProfileSheets.editProfile(context, _currentUid, _profileData!);
-              },
-              child: const Text('Edit Profile'),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: OutlinedButton(
-              onPressed: () {
-                HapticFeedback.mediumImpact();
-                ProfileSheets.registerGig(context, _currentUid);
-              },
-              child: const Text('Register Gig'),
-            ),
-          ),
-        ],
+      return SizedBox(
+        width: double.infinity,
+        child: ElevatedButton(
+          onPressed: () {
+            HapticFeedback.mediumImpact();
+            ProfileSheets.editProfile(context, _currentUid, _profileData!);
+          },
+          child: const Text('Edit Profile'),
+        ),
       );
     } else {
       return Row(
