@@ -3,7 +3,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:latlong2/latlong.dart';
-import '../theme/app_theme.dart';
 
 class HomeService {
   final SupabaseClient _supabase = Supabase.instance.client;
@@ -115,6 +114,28 @@ class HomeService {
     return result;
   }
 
+  Map<String, int?> _getPriceRange(Map<String, dynamic> data) {
+    final categories = List<Map<String, dynamic>>.from(data['serviceCategories'] ?? []);
+    int? minPrice;
+    int? maxPrice;
+    for (final cat in categories) {
+      final items = List<Map<String, dynamic>>.from(cat['items'] ?? []);
+      for (final item in items) {
+        final price = (item['price'] ?? 0).toInt();
+        if (price > 0) {
+          if (minPrice == null || price < minPrice) minPrice = price;
+          if (maxPrice == null || price > maxPrice) maxPrice = price;
+        }
+      }
+    }
+    return {'min': minPrice, 'max': maxPrice};
+  }
+
+  List<String> _getCategoryNames(Map<String, dynamic> data) {
+    final categories = List<Map<String, dynamic>>.from(data['serviceCategories'] ?? []);
+    return categories.map((c) => (c['name'] ?? '').toString()).where((n) => n.isNotEmpty).toList();
+  }
+
   List<ProviderCardData> _mergeAndSort(
     Map<String, Map<String, dynamic>> firestoreData,
     Map<String, double> distances,
@@ -133,7 +154,8 @@ class HomeService {
       final reviewCount = (data['reviewCount'] ?? 0).toInt();
       final rating = (data['rating'] ?? 0.0).toDouble();
       final gigCount = (data['gigCount'] ?? 0).toInt();
-      final services = List<String>.from(data['services'] ?? []);
+      final services = _getCategoryNames(data);
+      final priceRange = _getPriceRange(data);
 
       providers.add(ProviderCardData(
         uid: uid,
@@ -142,6 +164,8 @@ class HomeService {
         rating: rating,
         reviewCount: reviewCount,
         services: services,
+        minPrice: priceRange['min'],
+        maxPrice: priceRange['max'],
         distance: distance,
         gigCount: gigCount,
         gigCount7Days: gigCount7Days,
@@ -153,9 +177,7 @@ class HomeService {
     }
 
     if (filterTrending) {
-      // Trending: only show active providers with reviews
       providers.removeWhere((p) => p.gigCount7Days < 1 || p.reviewCount < 1);
-      // Sort: distance first, then activity, then rating, then total gigs
       providers.sort((a, b) {
         final distanceCompare = a.distance.compareTo(b.distance);
         if (distanceCompare != 0) return distanceCompare;
@@ -168,7 +190,6 @@ class HomeService {
         return b.gigCount.compareTo(a.gigCount);
       });
     } else {
-      // Nearby: distance first, then activity, then rating, then total gigs
       providers.sort((a, b) {
         final distanceCompare = a.distance.compareTo(b.distance);
         if (distanceCompare != 0) return distanceCompare;
@@ -190,9 +211,7 @@ class HomeService {
       final prefs = await SharedPreferences.getInstance();
       final jsonList = providers.map((p) => jsonEncode(p.toJson())).toList();
       await prefs.setStringList(key, jsonList);
-    } catch (_) {
-      // Silently fail — cache is non-critical
-    }
+    } catch (_) {}
   }
 
   Future<List<ProviderCardData>> _getCached(String key) async {
@@ -200,9 +219,7 @@ class HomeService {
       final prefs = await SharedPreferences.getInstance();
       final jsonList = prefs.getStringList(key);
       if (jsonList == null || jsonList.isEmpty) return [];
-      return jsonList
-          .map((j) => ProviderCardData.fromJson(jsonDecode(j)))
-          .toList();
+      return jsonList.map((j) => ProviderCardData.fromJson(jsonDecode(j))).toList();
     } catch (_) {
       return [];
     }
@@ -216,6 +233,8 @@ class ProviderCardData {
   final double rating;
   final int reviewCount;
   final List<String> services;
+  final int? minPrice;
+  final int? maxPrice;
   final double distance;
   final int gigCount;
   final int gigCount7Days;
@@ -231,6 +250,8 @@ class ProviderCardData {
     required this.rating,
     required this.reviewCount,
     required this.services,
+    this.minPrice,
+    this.maxPrice,
     required this.distance,
     required this.gigCount,
     required this.gigCount7Days,
@@ -247,6 +268,8 @@ class ProviderCardData {
         'rating': rating,
         'reviewCount': reviewCount,
         'services': services,
+        'minPrice': minPrice,
+        'maxPrice': maxPrice,
         'distance': distance,
         'gigCount': gigCount,
         'gigCount7Days': gigCount7Days,
@@ -264,6 +287,8 @@ class ProviderCardData {
       rating: (json['rating'] ?? 0.0).toDouble(),
       reviewCount: (json['reviewCount'] ?? 0).toInt(),
       services: List<String>.from(json['services'] ?? []),
+      minPrice: json['minPrice'] as int?,
+      maxPrice: json['maxPrice'] as int?,
       distance: (json['distance'] ?? 0.0).toDouble(),
       gigCount: (json['gigCount'] ?? 0).toInt(),
       gigCount7Days: (json['gigCount7Days'] ?? 0).toInt(),
