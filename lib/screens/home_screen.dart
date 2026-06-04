@@ -12,7 +12,6 @@ import '../services/home_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/trending_section.dart';
 import '../widgets/nearby_section.dart';
-import '../widgets/provider_bottom_sheet.dart';
 import '../utils/error_handler.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -213,16 +212,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return _homeService.fetchNearby(userLocation: _userLocation!, cursor: cursor);
   }
 
-  void _onProviderTap(ProviderCardData provider) {
+   void _onProviderTap(ProviderCardData provider) {
     HapticFeedback.lightImpact();
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => ProviderBottomSheet(provider: provider),
-    );
+    Navigator.of(context, rootNavigator: true).pushNamed('/profile', arguments: provider.uid);
   }
-
+  
   void _openLocationSettings() {
     if (Platform.isIOS) {
       launchUrl(Uri.parse('app-settings:'));
