@@ -1,14 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 import '../services/auth_service.dart';
 import '../services/delete_account_service.dart';
 import '../theme/app_theme.dart';
 import 'settings_sub_screens.dart';
-import 'payment_webview_screen.dart';
 import '../utils/error_handler.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -25,17 +21,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   bool _showPhone = true;
   bool _pushEnabled = true;
-  int _credits = 0;
   bool _isLoading = true;
-  List<Map<String, dynamic>> _creditPackages = [];
-  bool _isLoadingPackages = false;
-  String? _packagesError;
 
   @override
   void initState() {
     super.initState();
     _loadSettings();
-    _loadCreditPackages();
   }
 
   Future<void> _loadSettings() async {
@@ -49,7 +40,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         setState(() {
           _showPhone = data['showPhone'] ?? true;
           _pushEnabled = data['pushEnabled'] ?? true;
-          _credits = (data['credits'] ?? 0).toInt();
           _isLoading = false;
         });
       }
@@ -58,46 +48,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         setState(() => _isLoading = false);
         showError(context, e);
       }
-    }
-  }
-
-  Future<void> _loadCreditPackages() async {
-    setState(() => _isLoadingPackages = true);
-    try {
-      final remoteDoc = await _firestore.collection('metadata').doc('credit_packages').get();
-      if (remoteDoc.exists) {
-        final packages = List<Map<String, dynamic>>.from(remoteDoc.data()?['packages'] ?? []);
-        if (packages.isNotEmpty && mounted) {
-          setState(() => _creditPackages = packages);
-          setState(() => _isLoadingPackages = false);
-          return;
-        }
-      }
-      
-      if (_creditPackages.isEmpty) {
-        setState(() {
-          _creditPackages = [
-            {'amount': 1500, 'credits': 3},
-            {'amount': 2250, 'credits': 5},
-            {'amount': 3400, 'credits': 8},
-            {'amount': 4000, 'credits': 10},
-          ];
-        });
-      }
-    } catch (e) {
-      if (mounted) showError(context, e);
-      if (_creditPackages.isEmpty) {
-        setState(() {
-          _creditPackages = [
-            {'amount': 1500, 'credits': 3},
-            {'amount': 2250, 'credits': 5},
-            {'amount': 3400, 'credits': 8},
-            {'amount': 4000, 'credits': 10},
-          ];
-        });
-      }
-    } finally {
-      if (mounted) setState(() => _isLoadingPackages = false);
     }
   }
 
@@ -130,163 +80,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Failed to update. Please try again.')),
-        );
-      }
-    }
-  }
-
-  void _showBuyCredits() {
-    HapticFeedback.lightImpact();
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: Container(
-                  width: 36, height: 4,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF6B7280).withAlpha(77),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                'Buy Credits',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(ctx).textTheme.bodyLarge?.color,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Credits allow clients to rate and review your work.',
-                style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
-              ),
-              const SizedBox(height: 20),
-              if (_isLoadingPackages)
-                const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()))
-              else if (_packagesError != null)
-                Center(child: Text(_packagesError!, style: const TextStyle(color: Colors.red)))
-              else
-                ..._creditPackages.where((pkg) => pkg['amount'] != null && pkg['credits'] != null).map((pkg) {
-                  final amount = (pkg['amount'] as num).toInt();
-                  final credits = (pkg['credits'] as num).toInt();
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: OutlinedButton(
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                        _initiatePayment(amount, credits);
-                      },
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            '$credits Credits',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                              color: Theme.of(ctx).textTheme.bodyLarge?.color,
-                            ),
-                          ),
-                          Text(
-                            '₦${amount.toString()}',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                              color: Theme.of(ctx).textTheme.bodyLarge?.color,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                }).toList(),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _initiatePayment(int amount, int credits) async {
-    HapticFeedback.mediumImpact();
-    try {
-      final user = _authService.currentUser;
-      if (user == null) return;
-
-      final response = await http.post(
-        Uri.parse('https://ohysatmlieiatzwqwjyt.supabase.co/functions/v1/paystack-initialize'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'email': user.email,
-          'amount': amount,
-          'userId': user.uid,
-          'metadata': {'credits': credits},
-        }),
-      ).timeout(const Duration(seconds: 15));
-
-      if (response.statusCode != 200) {
-        final error = jsonDecode(response.body);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(error['error'] ?? 'Payment initialization failed')),
-          );
-        }
-        return;
-      }
-
-      final data = jsonDecode(response.body);
-      final authorizationUrl = data['authorizationUrl'] as String;
-      final reference = data['reference'] as String;
-
-      if (mounted) {
-        final result = await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => PaymentWebViewScreen(
-              authorizationUrl: authorizationUrl,
-              reference: reference,
-              callbackUrl: 'https://gigscourt.com/payment/callback',
-            ),
-          ),
-        );
-
-        if (result != null && result is Map && result['status'] == 'success') {
-          HapticFeedback.heavyImpact();
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Payment successful! Your credits will be updated shortly.')),
-            );
-            _loadSettings();
-          }
-        } else {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Payment cancelled.')),
-            );
-          }
-        }
-      }
-    } catch (e) {
-      HapticFeedback.vibrate();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
         );
       }
     }
@@ -367,17 +160,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Text(
-                      'Enter your password to delete your account',
-                      style: TextStyle(fontSize: 15, color: Color(0xFF6B7280)),
-                    ),
+                    const Text('Enter your password to delete your account',
+                        style: TextStyle(fontSize: 15, color: Color(0xFF6B7280))),
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: passwordController,
                       obscureText: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Password',
-                      ),
+                      decoration: const InputDecoration(labelText: 'Password'),
                     ),
                     const SizedBox(height: 20),
                     ElevatedButton(
@@ -455,29 +244,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   value: _pushEnabled,
                   onChanged: _togglePush,
                   activeColor: AppTheme.royalBlue,
-                ),
-                const SizedBox(height: 24),
-                _sectionTitle('Credits'),
-                ListTile(
-                  title: Text('My Credits', style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color)),
-                  subtitle: Text('$_credits credits remaining', style: const TextStyle(color: Color(0xFF6B7280))),
-                ),
-                ListTile(
-                  title: const Text('Buy Credits'),
-                  subtitle: const Text('Purchase credit packages'),
-                  trailing: const Icon(Icons.chevron_right, color: Color(0xFF6B7280)),
-                  onTap: _showBuyCredits,
-                ),
-                ListTile(
-                  title: const Text('Credit History'),
-                  subtitle: const Text('View your purchase history'),
-                  trailing: const Icon(Icons.chevron_right, color: Color(0xFF6B7280)),
-                  onTap: () {
-                    HapticFeedback.lightImpact();
-                    Navigator.of(context, rootNavigator: true).push(
-                      MaterialPageRoute(builder: (_) => const CreditHistoryScreen()),
-                    );
-                  },
                 ),
                 const SizedBox(height: 24),
                 _sectionTitle('Support'),
