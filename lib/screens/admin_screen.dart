@@ -93,7 +93,6 @@ class _DashboardTabState extends State<_DashboardTab> {
 
   Future<void> _loadStats() async {
     try {
-      // Use count() for Firestore aggregation (server-side, zero document reads cost)
       final profilesCount = await _firestore.collection('profiles').count().get();
       final gigsCount = await _firestore.collection('gigs').count().get();
       final completedCount = await _firestore.collection('gigs').where('status', isEqualTo: 'completed').count().get();
@@ -101,8 +100,6 @@ class _DashboardTabState extends State<_DashboardTab> {
       final cancelledCount = await _firestore.collection('gigs').where('status', isEqualTo: 'cancelled').count().get();
       final purchasesCount = await _firestore.collection('credit_purchases').where('status', isEqualTo: 'completed').count().get();
 
-      // For revenue, query only the amount field with a limit to reduce reads
-      // In production, maintain a stats document with pre-aggregated revenue
       int revenue = 0;
       try {
         final revenueDoc = await _firestore.collection('metadata').doc('admin_stats').get();
@@ -269,31 +266,6 @@ class _UsersTabState extends State<_UsersTab> {
     }
   }
 
-  Future<void> _giftCredits(String uid, String name) async {
-    final controller = TextEditingController();
-    final amount = await showDialog<int>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Gift Credits to $name'),
-        content: TextField(controller: controller, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Credits amount')),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(ctx, int.tryParse(controller.text) ?? 0), child: const Text('Send')),
-        ],
-      ),
-    );
-
-    if (amount != null && amount > 0) {
-      // Use FieldValue.increment for atomic operation (prevents race conditions)
-      await _firestore.collection('profiles').doc(uid).update({
-        'credits': FieldValue.increment(amount),
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$amount credits sent to $name')));
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final filtered = _users.where((u) {
@@ -325,14 +297,9 @@ class _UsersTabState extends State<_UsersTab> {
                     final u = filtered[index];
                     final name = u['name'] ?? 'Unknown';
                     final gigs = (u['gigCount'] ?? 0).toInt();
-                    final credits = (u['credits'] ?? 0).toInt();
                     return ListTile(
                       title: Text(name, style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color)),
-                      subtitle: Text('Gigs: $gigs · Credits: $credits', style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
-                      trailing: TextButton(
-                        onPressed: () => _giftCredits(u['uid'] ?? '', name),
-                        child: const Text('Gift Credits'),
-                      ),
+                      subtitle: Text('Gigs: $gigs', style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
                     );
                   },
                 ),
@@ -519,7 +486,6 @@ class _RevenueTabState extends State<_RevenueTab> {
 
   Future<void> _loadPurchases() async {
     try {
-      // Load aggregate stats
       final statsDoc = await _firestore.collection('metadata').doc('admin_stats').get();
       if (statsDoc.exists && mounted) {
         final data = statsDoc.data()!;
@@ -530,7 +496,6 @@ class _RevenueTabState extends State<_RevenueTab> {
         });
       }
 
-      // Load recent purchases for yearly breakdown (paginated)
       final snapshot = await _firestore
           .collection('credit_purchases')
           .where('status', isEqualTo: 'completed')
