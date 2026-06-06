@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import '../services/image_service.dart';
 import '../screens/edit_workspace_screen.dart';
-import '../screens/settings_screen.dart';
 import '../utils/error_handler.dart';
 
 class ServiceItem {
@@ -214,7 +212,7 @@ class ProfileSheets {
     );
   }
 
-  // Gig History bottom sheet (two tabs, wired to Firestore)
+  // Gig History bottom sheet
   static void gigHistory(BuildContext context, String uid) {
     showModalBottomSheet(
       context: context,
@@ -228,7 +226,7 @@ class ProfileSheets {
     );
   }
 
-  // Reviews bottom sheet (wired to Firestore)
+  // Reviews bottom sheet
   static void reviews(BuildContext context, String uid) {
     showModalBottomSheet(
       context: context,
@@ -238,31 +236,6 @@ class ProfileSheets {
       builder: (ctx) => SizedBox(
         height: MediaQuery.of(ctx).size.height * 0.7,
         child: SafeArea(child: _ReviewsContent(uid: uid)),
-      ),
-    );
-  }
-
-  // Credits bottom sheet (shows balance)
-  static void credits(BuildContext context, String uid) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => _CreditsContent(uid: uid),
-    );
-  }
-
-  // Register Gig chat list bottom sheet
-  static void registerGig(BuildContext context, String uid) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => SizedBox(
-        height: MediaQuery.of(ctx).size.height * 0.6,
-        child: SafeArea(child: _RegisterGigContent(uid: uid)),
       ),
     );
   }
@@ -510,7 +483,7 @@ class _EditServicesSheetState extends State<_EditServicesSheet> {
         for (final item in items) {
           final itemName = (item['name'] ?? '').toString().trim().toLowerCase();
           if (itemName.isNotEmpty) {
-                        await _supabase.from('provider_items').upsert({
+            await _supabase.from('provider_items').upsert({
               'item_name': itemName,
               'category': cat['name'] ?? 'Other',
               'provider_id': widget.uid,
@@ -915,163 +888,6 @@ class _ReviewsContentState extends State<_ReviewsContent> {
               );
             },
           ),
-        ),
-      ],
-    );
-  }
-}
-
-// -- Credits Content --
-class _CreditsContent extends StatefulWidget {
-  final String uid;
-  const _CreditsContent({required this.uid});
-  @override
-  State<_CreditsContent> createState() => _CreditsContentState();
-}
-
-class _CreditsContentState extends State<_CreditsContent> {
-  int _credits = 0;
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadCredits();
-  }
-
-  Future<void> _loadCredits() async {
-    try {
-      final doc = await FirebaseFirestore.instance.collection('profiles').doc(widget.uid).get();
-      if (doc.exists && mounted) {
-        setState(() {
-          _credits = (doc.data()?['credits'] ?? 0).toInt();
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Center(
-            child: Container(
-              width: 36, height: 4,
-              decoration: BoxDecoration(color: const Color(0xFF6B7280).withAlpha(77), borderRadius: BorderRadius.circular(2)),
-            ),
-          ),
-          const SizedBox(height: 20),
-          Text('Credits', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Theme.of(context).textTheme.bodyLarge?.color)),
-          const SizedBox(height: 16),
-          _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : Column(
-                  children: [
-                    Text('$_credits credits remaining', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Theme.of(context).textTheme.bodyLarge?.color)),
-                    const SizedBox(height: 8),
-                    const Text('Credits allow clients to rate and review your work.', textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: Color(0xFF6B7280))),
-                    const SizedBox(height: 20),
-                    OutlinedButton(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        Navigator.of(context, rootNavigator: true).push(
-                          MaterialPageRoute(builder: (_) => const SettingsScreen()),
-                        );
-                      },
-                      child: const Text('Buy Credits'),
-                    ),
-                  ],
-                ),
-        ],
-      ),
-    );
-  }
-}
-
-// -- Register Gig Content --
-class _RegisterGigContent extends StatefulWidget {
-  final String uid;
-  const _RegisterGigContent({required this.uid});
-  @override
-  State<_RegisterGigContent> createState() => _RegisterGigContentState();
-}
-
-class _RegisterGigContentState extends State<_RegisterGigContent> {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  List<Map<String, dynamic>> _chats = [];
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchRecentChats();
-  }
-
-  Future<void> _fetchRecentChats() async {
-    try {
-      final twoWeeksAgo = DateTime.now().subtract(const Duration(days: 14));
-      final snapshot = await _firestore
-          .collection('chats')
-          .where('participants', arrayContains: widget.uid)
-          .where('lastMessageTime', isGreaterThanOrEqualTo: Timestamp.fromDate(twoWeeksAgo))
-          .orderBy('lastMessageTime', descending: true)
-          .get();
-
-      if (mounted) {
-        setState(() {
-          _chats = snapshot.docs.map((d) => d.data()).toList();
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Text('Register a Gig', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Theme.of(context).textTheme.bodyLarge?.color)),
-        ),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16),
-          child: Text('Select a recent chat to register a gig', style: TextStyle(fontSize: 13, color: Color(0xFF6B7280))),
-        ),
-        const SizedBox(height: 16),
-        Expanded(
-          child: _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : _chats.isEmpty
-                  ? Center(child: Text('No recent chats', style: TextStyle(color: Theme.of(context).textTheme.bodySmall?.color)))
-                  : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemCount: _chats.length,
-                      itemBuilder: (context, index) {
-                        final chat = _chats[index];
-                        final participants = List<String>.from(chat['participants'] ?? []);
-                        final otherUid = participants.firstWhere((p) => p != widget.uid, orElse: () => '');
-                        return ListTile(
-                          title: Text('Chat with user', style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color)),
-                          subtitle: Text(otherUid, style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
-                          trailing: const Icon(Icons.chevron_right, color: Color(0xFF6B7280)),
-                          onTap: () {
-                            HapticFeedback.lightImpact();
-                            Navigator.pop(context);
-                            Navigator.of(context, rootNavigator: true).pushNamed('/chat', arguments: otherUid);
-                          },
-                        );
-                      },
-                    ),
         ),
       ],
     );
