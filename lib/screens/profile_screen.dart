@@ -11,7 +11,6 @@ import '../services/auth_service.dart';
 import '../services/image_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/profile_sheets.dart';
-import 'edit_workspace_screen.dart';
 import 'settings_screen.dart';
 import '../utils/error_handler.dart';
 
