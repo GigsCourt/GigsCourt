@@ -44,7 +44,7 @@ async function recordGigPayment(token: string, projectId: string, amount: number
   if (checkResponse.status === 200) return;
 
   const price = Number(metadata.price || "0");
-  const commission = Math.round(price * 0.1);
+  const commission = Math.min(Math.round(price * 0.12), 2000);
 
   await fetch(
     `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/gig_payments/${reference}`,
