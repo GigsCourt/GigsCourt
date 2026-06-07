@@ -215,7 +215,6 @@ class _EditServicesSheetState extends State<_EditServicesSheet> {
                 if (itemName.isNotEmpty && price != null && price > 0) { items.add(ServiceItem(name: itemName, price: price)); nameController.clear(); priceController.clear(); setSheetState(() {}); }
               }),
             ]),
-            // Pricing breakdown
             ValueListenableBuilder<TextEditingValue>(
               valueListenable: priceController,
               builder: (context, value, child) {
@@ -241,7 +240,7 @@ class _EditServicesSheetState extends State<_EditServicesSheet> {
                       ]),
                       if (showHint) ...[
                         const SizedBox(height: 4),
-                        Text('Suggested price to earn ₦$price: ₦${((price / (1 - 0.12)).round())}', style: const TextStyle(fontSize: 10, color: Color(0xFF6B7280), fontStyle: FontStyle.italic)),
+                        Text('Suggested price to earn ₦$price: ₦${((price / 0.88).round())}', style: const TextStyle(fontSize: 10, color: Color(0xFF6B7280), fontStyle: FontStyle.italic)),
                       ],
                     ]),
                   ),
