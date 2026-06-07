@@ -168,7 +168,7 @@ class _ProfileSetupStep2State extends State<ProfileSetupStep2> {
                 final name = nameController.text.trim(); final price = int.tryParse(priceController.text.trim());
                 if (name.isNotEmpty && price != null && price > 0) { items.add(ServiceItem(name: name, price: price)); nameController.clear(); priceController.clear(); setSheetState(() {}); }
               }),
-            ]),
+            ],
             ValueListenableBuilder<TextEditingValue>(
               valueListenable: priceController,
               builder: (context, value, child) {
