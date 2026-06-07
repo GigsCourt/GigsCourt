@@ -59,4 +59,49 @@ class PushService {
       data: {'type': 'review_submitted', 'screen': 'profile', 'userId': providerId},
     );
   }
+
+  Future<void> sendNewBooking(String providerId, String clientName, String itemName, int price, String chatId) async {
+    await send(
+      userId: providerId,
+      title: 'New Booking!',
+      body: '$clientName booked $itemName — ₦$price',
+      data: {'type': 'new_booking', 'screen': 'chat', 'chatId': chatId},
+    );
+  }
+
+  Future<void> sendBookingAccepted(String clientId, String providerName, String itemName, String chatId) async {
+    await send(
+      userId: clientId,
+      title: 'Booking Accepted',
+      body: '$providerName accepted your booking for $itemName',
+      data: {'type': 'booking_accepted', 'screen': 'chat', 'chatId': chatId},
+    );
+  }
+
+  Future<void> sendBookingDeclined(String clientId, String providerName, String itemName) async {
+    await send(
+      userId: clientId,
+      title: 'Booking Declined',
+      body: '$providerName declined your booking for $itemName — refund processed',
+      data: {'type': 'booking_declined', 'screen': 'home'},
+    );
+  }
+
+  Future<void> sendPaymentReceived(String providerId, String itemName, int amount) async {
+    await send(
+      userId: providerId,
+      title: 'Payment Received',
+      body: 'Client confirmed completion — ₦$amount sent to your account for $itemName',
+      data: {'type': 'payment_received', 'screen': 'profile'},
+    );
+  }
+
+  Future<void> sendConfirmReminder(String clientId, String providerName, String itemName, String chatId) async {
+    await send(
+      userId: clientId,
+      title: 'Confirm Completion',
+      body: 'Please confirm completion and rate $providerName for $itemName',
+      data: {'type': 'confirm_reminder', 'screen': 'chat', 'chatId': chatId},
+    );
+  }
 }
