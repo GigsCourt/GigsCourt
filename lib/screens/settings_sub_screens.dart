@@ -24,7 +24,7 @@ class _SupportScreenState extends State<SupportScreen> with SingleTickerProvider
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(backgroundColor: Theme.of(context).scaffoldBackgroundColor, leading: IconButton(icon: Icon(Icons.arrow_back, color: Theme.of(context).textTheme.bodyLarge?.color), onPressed: () => Navigator.of(context).pop()), title: Text('Support', style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color)), bottom: TabBar(controller: _tabController, labelColor: const Color(0xFF1A1F71), unselectedLabelColor: const Color(0xFF6B7280), indicatorColor: const Color(0xFF1A1F71), tabs: const [Tab(text: 'Report Issue'), Tab(text: 'My Tickets')])),
-      body: TabBarView(controller: _tabController, children: const [_ReportIssueTab(), _MyTicketsTab()]),
+      body: TabBarView(controller: _tabController, children: [_ReportIssueTab(), _MyTicketsTab()]),
     );
   }
 }
@@ -88,7 +88,14 @@ class _MyTicketsTabState extends State<_MyTicketsTab> {
       if (mounted) setState(() { _tickets = snapshot.docs.map((d) => d.data()).toList(); _lastDoc = snapshot.docs.isNotEmpty ? snapshot.docs.last : null; _hasMore = snapshot.docs.length >= _pageSize; _isLoading = false; });
     } catch (e) { if (mounted) { showError(context, e); setState(() => _isLoading = false); } }
   }
-  Future<void> _fetchMore() async { /* unchanged */ }
+  Future<void> _fetchMore() async {
+    if (_isLoadingMore || !_hasMore || _lastDoc == null) return; setState(() => _isLoadingMore = true);
+    try {
+      final user = FirebaseAuth.instance.currentUser; if (user == null) return;
+      final snapshot = await FirebaseFirestore.instance.collection('reported_issues').where('userId', isEqualTo: user.uid).orderBy('createdAt', descending: true).startAfterDocument(_lastDoc!).limit(_pageSize).get();
+      if (mounted) setState(() { _tickets.addAll(snapshot.docs.map((d) => d.data())); _lastDoc = snapshot.docs.isNotEmpty ? snapshot.docs.last : null; _hasMore = snapshot.docs.length >= _pageSize; _isLoadingMore = false; });
+    } catch (e) { if (mounted) { showError(context, e); setState(() => _isLoadingMore = false); } }
+  }
   @override
   Widget build(BuildContext context) {
     if (_isLoading) return const Center(child: CircularProgressIndicator());
@@ -127,7 +134,7 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
     final user = FirebaseAuth.instance.currentUser; if (user == null) return;
     final snapshot = await FirebaseFirestore.instance.collection('gigs').where('providerId', isEqualTo: user.uid).where('status', isEqualTo: 'completed').get();
     int available = 0; final now = DateTime.now(); final cutoff = now.subtract(const Duration(hours: 24));
-    for (final doc in snapshot.docs) { final payout = (doc.data()['providerPayout'] ?? 0).toInt(); final completedAt = (doc.data()['completedAt'] as Timestamp?)?.toDate(); if (completedAt != null && completedAt.isBefore(cutoff)) available += payout; }
+    for (final doc in snapshot.docs) { final payout = (doc.data()['providerPayout'] as num?)?.toInt() ?? 0; final completedAt = (doc.data()['completedAt'] as Timestamp?)?.toDate(); if (completedAt != null && completedAt.isBefore(cutoff)) available += payout; }
     if (mounted) setState(() => _availableBalance = available);
   }
 
@@ -205,7 +212,7 @@ class _EarningsHistoryScreenState extends State<EarningsHistoryScreen> {
       appBar: AppBar(backgroundColor: Theme.of(context).scaffoldBackgroundColor, leading: IconButton(icon: Icon(Icons.arrow_back, color: Theme.of(context).textTheme.bodyLarge?.color), onPressed: () => Navigator.of(context).pop()), title: Text('Earnings History', style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color))),
       body: _isLoading ? const Center(child: CircularProgressIndicator()) : _gigs.isEmpty ? Center(child: Text('No earnings yet', style: TextStyle(color: Theme.of(context).textTheme.bodySmall?.color))) : ListView.builder(controller: _scrollController, padding: const EdgeInsets.all(16), itemCount: _gigs.length + (_hasMore ? 1 : 0), itemBuilder: (context, index) {
         if (index >= _gigs.length) return const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()));
-        final g = _gigs[index]; final service = g['service'] ?? ''; final payout = (g['providerPayout'] ?? 0).toInt(); final commission = (g['commission'] ?? 0).toInt(); final completedAt = g['completedAt'] as Timestamp?;
+        final g = _gigs[index]; final service = g['service'] ?? ''; final payout = (g['providerPayout'] as num?)?.toInt() ?? 0; final commission = (g['commission'] as num?)?.toInt() ?? 0; final completedAt = g['completedAt'] as Timestamp?;
         return Card(color: Theme.of(context).cardColor, margin: const EdgeInsets.only(bottom: 8), child: ListTile(
           title: Text(service.replaceAll('-', ' '), style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color)),
           subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -246,25 +253,16 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
     final accountNumberController = TextEditingController();
     final bankCodeController = TextEditingController();
     final bankNameController = TextEditingController();
-
     final result = await showDialog<Map<String, String>>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Add Bank Account'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(controller: accountNumberController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Account Number', hintText: '10-digit NUBAN account number')),
-          const SizedBox(height: 12),
-          TextField(controller: bankNameController, decoration: const InputDecoration(labelText: 'Bank Name', hintText: 'e.g. Access Bank')),
-          const SizedBox(height: 12),
-          TextField(controller: bankCodeController, decoration: const InputDecoration(labelText: 'Bank Code (optional)', hintText: 'e.g. 044 for Access Bank')),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          TextButton(onPressed: () { if (accountNumberController.text.trim().isNotEmpty && bankNameController.text.trim().isNotEmpty) { Navigator.pop(ctx, {'accountNumber': accountNumberController.text.trim(), 'bankName': bankNameController.text.trim(), 'bankCode': bankCodeController.text.trim()}); } }, child: const Text('Add')),
-        ],
-      ),
+      context: context, builder: (ctx) => AlertDialog(title: const Text('Add Bank Account'), content: Column(mainAxisSize: MainAxisSize.min, children: [
+        TextField(controller: accountNumberController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Account Number', hintText: '10-digit NUBAN account number')),
+        const SizedBox(height: 12), TextField(controller: bankNameController, decoration: const InputDecoration(labelText: 'Bank Name', hintText: 'e.g. Access Bank')),
+        const SizedBox(height: 12), TextField(controller: bankCodeController, decoration: const InputDecoration(labelText: 'Bank Code (optional)', hintText: 'e.g. 044 for Access Bank')),
+      ]), actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+        TextButton(onPressed: () { if (accountNumberController.text.trim().isNotEmpty && bankNameController.text.trim().isNotEmpty) { Navigator.pop(ctx, {'accountNumber': accountNumberController.text.trim(), 'bankName': bankNameController.text.trim(), 'bankCode': bankCodeController.text.trim()}); } }, child: const Text('Add')),
+      ]),
     );
-
     if (result != null) {
       final newAccounts = List<Map<String, dynamic>>.from(_bankAccounts);
       newAccounts.add({'id': DateTime.now().millisecondsSinceEpoch.toString(), 'accountNumber': result['accountNumber'], 'bankName': result['bankName'], 'bankCode': result['bankCode'] ?? '', 'isDefault': _bankAccounts.isEmpty});
@@ -276,8 +274,7 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
   Future<void> _deleteBankAccount(int index) async {
     final account = _bankAccounts[index];
     final confirm = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(title: const Text('Remove Account'), content: Text('Remove ${account['bankName']} (${account['accountNumber']})?'), actions: [
-      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-      TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Remove', style: TextStyle(color: Colors.red))),
+      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')), TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Remove', style: TextStyle(color: Colors.red))),
     ]));
     if (confirm == true) { final newAccounts = List<Map<String, dynamic>>.from(_bankAccounts); newAccounts.removeAt(index); await FirebaseFirestore.instance.collection('profiles').doc(FirebaseAuth.instance.currentUser?.uid).update({'bankAccounts': newAccounts}); _loadBankAccounts(); }
   }
