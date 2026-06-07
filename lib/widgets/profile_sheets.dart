@@ -214,7 +214,7 @@ class _EditServicesSheetState extends State<_EditServicesSheet> {
                 final price = int.tryParse(priceController.text.trim());
                 if (itemName.isNotEmpty && price != null && price > 0) { items.add(ServiceItem(name: itemName, price: price)); nameController.clear(); priceController.clear(); setSheetState(() {}); }
               }),
-            ]),
+            ],
             ValueListenableBuilder<TextEditingValue>(
               valueListenable: priceController,
               builder: (context, value, child) {
