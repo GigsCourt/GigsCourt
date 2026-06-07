@@ -157,6 +157,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       );
                     },
                   ),
+                ListTile(
+                  title: const Text('Bank Accounts'),
+                  subtitle: const Text('Manage your withdrawal accounts'),
+                  trailing: const Icon(Icons.chevron_right, color: Color(0xFF6B7280)),
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    Navigator.of(context, rootNavigator: true).push(
+                      MaterialPageRoute(builder: (_) => const BankAccountsScreen()),
+                    );
+                  },
+                ),
                 const SizedBox(height: 24),
                 _sectionTitle('Support'),
                 ListTile(title: const Text('Contact Support'), trailing: const Icon(Icons.chevron_right, color: Color(0xFF6B7280)), onTap: () { HapticFeedback.lightImpact(); Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => const SupportScreen())); }),
