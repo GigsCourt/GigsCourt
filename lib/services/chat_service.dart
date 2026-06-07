@@ -19,7 +19,6 @@ class ChatService {
 
   Future<void> _notifyOtherUser(String chatId, String preview) async {
     final otherUid = _getOtherUid(chatId);
-    // Get sender name from Firestore
     final senderDoc = await _firestore.collection('profiles').doc(_currentUid).get();
     final senderName = senderDoc.data()?['name'] ?? 'Someone';
     await _pushService.sendNewMessage(otherUid, senderName, preview, chatId);
@@ -137,109 +136,6 @@ class ChatService {
       }
     } else {
       await ref.update({'deleted_for_$_currentUid': true});
-    }
-  }
-
-  Future<void> registerGig(String chatId, String otherUid, String service) async {
-    final user = _auth.currentUser;
-    if (user == null) return;
-
-    final existing = await _firestore
-        .collection('chats')
-        .doc(chatId)
-        .get();
-    final existingGigId = existing.data()?['gigId'] as String?;
-    if (existingGigId != null) {
-      final gigDoc = await _firestore.collection('gigs').doc(existingGigId).get();
-      if (gigDoc.exists && (gigDoc.data()?['status'] ?? '') == 'pending') {
-        throw Exception('A pending gig already exists');
-      }
-    }
-
-    final profile = await _firestore.collection('profiles').doc(user.uid).get();
-    final credits = (profile.data()?['credits'] ?? 0).toInt();
-    if (credits < 1) throw Exception('Insufficient credits');
-
-    final gigRef = await _firestore.collection('gigs').add({
-      'providerId': user.uid,
-      'clientId': otherUid,
-      'service': service,
-      'status': 'pending',
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-
-    await _firestore.collection('chats').doc(chatId).set({
-      'gigId': gigRef.id,
-    }, SetOptions(merge: true));
-  }
-
-  Future<void> submitReview(String gigId, int rating, String? text) async {
-    final gigDoc = await _firestore.collection('gigs').doc(gigId).get();
-    final gig = gigDoc.data();
-    if (gig == null) return;
-
-    final providerId = gig['providerId'];
-    final clientId = gig['clientId'];
-
-    final providerDoc = await _firestore.collection('profiles').doc(providerId).get();
-    final currentRating = (providerDoc.data()?['rating'] ?? 0.0).toDouble();
-    final currentReviewCount = (providerDoc.data()?['reviewCount'] ?? 0).toInt();
-    final currentCredits = (providerDoc.data()?['credits'] ?? 0).toInt();
-
-    final existingReviews = await _firestore.collection('reviews')
-        .where('providerId', isEqualTo: providerId)
-        .where('clientId', isEqualTo: clientId)
-        .get();
-
-    double newAvgRating;
-    int newReviewCount;
-
-    if (existingReviews.docs.isNotEmpty) {
-      final oldRating = (existingReviews.docs.first.data()['rating'] ?? 0).toInt();
-      final totalRatingSum = (currentRating * currentReviewCount) - oldRating + rating;
-      newAvgRating = totalRatingSum / currentReviewCount;
-      newReviewCount = currentReviewCount;
-
-      await existingReviews.docs.first.reference.update({
-        'rating': rating, 'text': text ?? '', 'createdAt': FieldValue.serverTimestamp(),
-      });
-    } else {
-      final totalRatingSum = (currentRating * currentReviewCount) + rating;
-      newReviewCount = currentReviewCount + 1;
-      newAvgRating = totalRatingSum / newReviewCount;
-
-      await _firestore.collection('reviews').add({
-        'providerId': providerId, 'clientId': clientId, 'gigId': gigId,
-        'rating': rating, 'text': text ?? '', 'createdAt': FieldValue.serverTimestamp(),
-      });
-    }
-
-    await _firestore.collection('profiles').doc(providerId).update({
-      'rating': newAvgRating,
-      'reviewCount': newReviewCount,
-      'credits': currentCredits - 1,
-      'gigCount': FieldValue.increment(1),
-      'gigCount7Days': FieldValue.increment(1),
-      'gigCount30Days': FieldValue.increment(1),
-      'lastGigCompletedAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
-
-    await _firestore.collection('gigs').doc(gigId).update({
-      'status': 'completed', 'completedAt': FieldValue.serverTimestamp(),
-    });
-
-    // Get client name and send notification to provider
-    final clientDoc = await _firestore.collection('profiles').doc(clientId).get();
-    final clientName = clientDoc.data()?['name'] ?? 'A client';
-    await _pushService.sendReviewSubmitted(providerId, clientName, rating, providerId);
-  }
-
-  Future<void> cancelGig(String gigId) async {
-    await _firestore.collection('gigs').doc(gigId).update({'status': 'cancelled'});
-    final chats = await _firestore.collection('chats').where('gigId', isEqualTo: gigId).get();
-    for (final doc in chats.docs) {
-      await doc.reference.update({'gigId': FieldValue.delete()});
     }
   }
 
