@@ -35,39 +35,37 @@ async function getAccessToken(): Promise<string> {
   return data.access_token;
 }
 
-async function atomicIncrementCredits(token: string, projectId: string, userId: string, credits: number) {
-  const response = await fetch(
-    `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/profiles/${userId}`,
+async function recordGigPayment(token: string, projectId: string, amount: number, reference: string, metadata: any) {
+  const checkResponse = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/gig_payments/${reference}`,
     { headers: { "Authorization": `Bearer ${token}` } }
   );
 
-  if (response.status !== 200) return;
-  
-  const data = await response.json();
-  const fields = data.fields || {};
-  const currentCredits = Number(fields.credits?.integerValue || "0");
-  const creditsToAdd = Number(credits);
-  const newCredits = currentCredits + creditsToAdd;
+  if (checkResponse.status === 200) return;
+
+  const price = Number(metadata.price || "0");
+  const commission = Math.round(price * 0.1);
 
   await fetch(
-    `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/profiles/${userId}`,
+    `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/gig_payments/${reference}`,
     {
       method: "PATCH",
-      headers: {
-        "Authorization": `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
+      headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         fields: {
-          credits: { integerValue: newCredits },
-          updatedAt: { timestampValue: new Date().toISOString() },
+          clientId: { stringValue: metadata.userId || "" },
+          providerId: { stringValue: metadata.providerId || "" },
+          itemName: { stringValue: metadata.itemName || "" },
+          price: { integerValue: price },
+          commission: { integerValue: commission },
+          reference: { stringValue: reference },
+          status: { stringValue: "completed" },
+          createdAt: { timestampValue: new Date().toISOString() },
         },
       }),
     }
   );
-}
 
-async function updateAdminStats(token: string, projectId: string, amount: number) {
   const getResponse = await fetch(
     `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/metadata/admin_stats`,
     { headers: { "Authorization": `Bearer ${token}` } }
@@ -79,59 +77,19 @@ async function updateAdminStats(token: string, projectId: string, amount: number
     currentTotal = Number(data.fields?.totalRevenue?.integerValue || "0");
   }
 
-  const newTotal = currentTotal + Number(amount);
-
   await fetch(
     `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/metadata/admin_stats`,
     {
       method: "PATCH",
-      headers: {
-        "Authorization": `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
+      headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         fields: {
-          totalRevenue: { integerValue: newTotal },
+          totalRevenue: { integerValue: currentTotal + commission },
           updatedAt: { timestampValue: new Date().toISOString() },
         },
       }),
     }
   );
-}
-
-async function recordPurchase(token: string, projectId: string, userId: string, amount: number, credits: number, reference: string) {
-  const checkResponse = await fetch(
-    `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/credit_purchases/${reference}`,
-    { headers: { "Authorization": `Bearer ${token}` } }
-  );
-
-  if (checkResponse.status === 200) {
-    return;
-  }
-
-  await fetch(
-    `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/credit_purchases/${reference}`,
-    {
-      method: "PATCH",
-      headers: {
-        "Authorization": `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        fields: {
-          userId: { stringValue: userId },
-          amount: { integerValue: amount },
-          credits: { integerValue: credits },
-          reference: { stringValue: reference },
-          status: { stringValue: "completed" },
-          createdAt: { timestampValue: new Date().toISOString() },
-        },
-      }),
-    }
-  );
-
-  await atomicIncrementCredits(token, projectId, userId, credits);
-  await updateAdminStats(token, projectId, amount);
 }
 
 serve(async (req) => {
@@ -168,27 +126,10 @@ serve(async (req) => {
     }
 
     const { amount, reference, metadata } = event.data;
-    const userId = metadata?.userId;
-    const credits = metadata?.credits;
-
-    if (!userId || !credits) {
-      return new Response(JSON.stringify({ error: "Missing metadata" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     const projectId = Deno.env.get("FIREBASE_PROJECT_ID")!;
     const firestoreToken = await getAccessToken();
 
-    await recordPurchase(
-      firestoreToken,
-      projectId,
-      userId,
-      amount / 100,
-      credits,
-      reference,
-    );
+    await recordGigPayment(firestoreToken, projectId, amount / 100, reference, metadata);
 
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
