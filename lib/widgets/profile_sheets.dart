@@ -199,7 +199,7 @@ class _EditServicesSheetState extends State<_EditServicesSheet> {
                 contentPadding: EdgeInsets.zero, dense: true,
                 title: Text(entry.value.name, style: const TextStyle(fontSize: 14)),
                 trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Text('₦${entry.value.price}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF2D3BA0))),
+                  Text('N${entry.value.price}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF2D3BA0))),
                   IconButton(icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red), onPressed: () { items.removeAt(entry.key); setSheetState(() {}); }),
                 ]),
               )),
@@ -207,14 +207,14 @@ class _EditServicesSheetState extends State<_EditServicesSheet> {
             Row(children: [
               Expanded(flex: 3, child: TextField(controller: nameController, decoration: const InputDecoration(hintText: 'Service name (e.g. Basic Cut)', hintStyle: TextStyle(fontSize: 12), isDense: true), style: const TextStyle(fontSize: 13))),
               const SizedBox(width: 8),
-              Expanded(flex: 2, child: TextField(controller: priceController, keyboardType: TextInputType.number, decoration: const InputDecoration(hintText: 'Price (₦)', hintStyle: TextStyle(fontSize: 12), isDense: true, prefixText: '₦ '), style: const TextStyle(fontSize: 13))),
+              Expanded(flex: 2, child: TextField(controller: priceController, keyboardType: TextInputType.number, decoration: const InputDecoration(hintText: 'Price (N)', hintStyle: TextStyle(fontSize: 12), isDense: true, prefixText: 'N '), style: const TextStyle(fontSize: 13))),
               const SizedBox(width: 4),
               IconButton(icon: const Icon(Icons.add_circle, color: Color(0xFF2D3BA0)), onPressed: () {
                 final itemName = nameController.text.trim();
                 final price = int.tryParse(priceController.text.trim());
                 if (itemName.isNotEmpty && price != null && price > 0) { items.add(ServiceItem(name: itemName, price: price)); nameController.clear(); priceController.clear(); setSheetState(() {}); }
               }),
-            ],
+            ]),
             ValueListenableBuilder<TextEditingValue>(
               valueListenable: priceController,
               builder: (context, value, child) {
@@ -231,16 +231,16 @@ class _EditServicesSheetState extends State<_EditServicesSheet> {
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                         const Text('Platform fee (12%)', style: TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
-                        Text(commission >= 2000 ? '-₦$commission (capped)' : '-₦$commission', style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
+                        Text(commission >= 2000 ? '-N$commission (capped)' : '-N$commission', style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
                       ]),
                       const SizedBox(height: 2),
                       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                         const Text('You\'ll earn', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                        Text('₦$earnings', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF2D3BA0))),
+                        Text('N$earnings', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF2D3BA0))),
                       ]),
                       if (showHint) ...[
                         const SizedBox(height: 4),
-                        Text('Suggested price to earn ₦$price: ₦${((price / 0.88).round())}', style: const TextStyle(fontSize: 10, color: Color(0xFF6B7280), fontStyle: FontStyle.italic)),
+                        Text('Suggested price to earn N$price: N${((price / 0.88).round())}', style: const TextStyle(fontSize: 10, color: Color(0xFF6B7280), fontStyle: FontStyle.italic)),
                       ],
                     ]),
                   ),
