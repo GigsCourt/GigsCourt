@@ -219,6 +219,89 @@ class _EarningsHistoryScreenState extends State<EarningsHistoryScreen> {
   }
 }
 
+// Bank Accounts Screen
+class BankAccountsScreen extends StatefulWidget {
+  const BankAccountsScreen({super.key});
+  @override
+  State<BankAccountsScreen> createState() => _BankAccountsScreenState();
+}
+
+class _BankAccountsScreenState extends State<BankAccountsScreen> {
+  List<Map<String, dynamic>> _bankAccounts = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() { super.initState(); _loadBankAccounts(); }
+
+  Future<void> _loadBankAccounts() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser; if (user == null) return;
+      final doc = await FirebaseFirestore.instance.collection('profiles').doc(user.uid).get();
+      if (doc.exists && mounted) { setState(() { _bankAccounts = List<Map<String, dynamic>>.from(doc.data()?['bankAccounts'] ?? []); _isLoading = false; }); }
+      else { setState(() => _isLoading = false); }
+    } catch (_) { setState(() => _isLoading = false); }
+  }
+
+  Future<void> _addBankAccount() async {
+    final accountNumberController = TextEditingController();
+    final bankCodeController = TextEditingController();
+    final bankNameController = TextEditingController();
+
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add Bank Account'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: accountNumberController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Account Number', hintText: '10-digit NUBAN account number')),
+          const SizedBox(height: 12),
+          TextField(controller: bankNameController, decoration: const InputDecoration(labelText: 'Bank Name', hintText: 'e.g. Access Bank')),
+          const SizedBox(height: 12),
+          TextField(controller: bankCodeController, decoration: const InputDecoration(labelText: 'Bank Code (optional)', hintText: 'e.g. 044 for Access Bank')),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(onPressed: () { if (accountNumberController.text.trim().isNotEmpty && bankNameController.text.trim().isNotEmpty) { Navigator.pop(ctx, {'accountNumber': accountNumberController.text.trim(), 'bankName': bankNameController.text.trim(), 'bankCode': bankCodeController.text.trim()}); } }, child: const Text('Add')),
+        ],
+      ),
+    );
+
+    if (result != null) {
+      final newAccounts = List<Map<String, dynamic>>.from(_bankAccounts);
+      newAccounts.add({'id': DateTime.now().millisecondsSinceEpoch.toString(), 'accountNumber': result['accountNumber'], 'bankName': result['bankName'], 'bankCode': result['bankCode'] ?? '', 'isDefault': _bankAccounts.isEmpty});
+      await FirebaseFirestore.instance.collection('profiles').doc(FirebaseAuth.instance.currentUser?.uid).update({'bankAccounts': newAccounts});
+      _loadBankAccounts();
+    }
+  }
+
+  Future<void> _deleteBankAccount(int index) async {
+    final account = _bankAccounts[index];
+    final confirm = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(title: const Text('Remove Account'), content: Text('Remove ${account['bankName']} (${account['accountNumber']})?'), actions: [
+      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+      TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Remove', style: TextStyle(color: Colors.red))),
+    ]));
+    if (confirm == true) { final newAccounts = List<Map<String, dynamic>>.from(_bankAccounts); newAccounts.removeAt(index); await FirebaseFirestore.instance.collection('profiles').doc(FirebaseAuth.instance.currentUser?.uid).update({'bankAccounts': newAccounts}); _loadBankAccounts(); }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      appBar: AppBar(backgroundColor: Theme.of(context).scaffoldBackgroundColor, leading: IconButton(icon: Icon(Icons.arrow_back, color: Theme.of(context).textTheme.bodyLarge?.color), onPressed: () => Navigator.of(context).pop()), title: Text('Bank Accounts', style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color)), actions: [TextButton(onPressed: _bankAccounts.length >= 3 ? null : _addBankAccount, child: const Text('Add'))]),
+      body: _isLoading ? const Center(child: CircularProgressIndicator()) : _bankAccounts.isEmpty ? Center(child: Padding(padding: const EdgeInsets.all(32), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        const Icon(Icons.account_balance, size: 48, color: Color(0xFF6B7280)), const SizedBox(height: 16), const Text('No bank accounts added', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)), const SizedBox(height: 8), const Text('Add a bank account to receive your earnings.', textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: Color(0xFF6B7280))), const SizedBox(height: 16), ElevatedButton(onPressed: _addBankAccount, child: const Text('Add Bank Account')),
+      ]))) : ListView.builder(padding: const EdgeInsets.all(16), itemCount: _bankAccounts.length, itemBuilder: (context, index) {
+        final account = _bankAccounts[index];
+        return Card(color: Theme.of(context).cardColor, margin: const EdgeInsets.only(bottom: 8), child: ListTile(
+          leading: const Icon(Icons.account_balance, color: AppTheme.royalBlue),
+          title: Text(account['bankName'] ?? 'Unknown Bank', style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color)),
+          subtitle: Text('****${(account['accountNumber'] ?? '').toString().length > 4 ? (account['accountNumber'] ?? '').toString().substring((account['accountNumber'] ?? '').toString().length - 4) : account['accountNumber']}', style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
+          trailing: IconButton(icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20), onPressed: () => _deleteBankAccount(index)),
+        ));
+      }),
+    );
+  }
+}
+
 // Legal Full Screen
 class LegalScreen extends StatefulWidget { const LegalScreen({super.key}); @override State<LegalScreen> createState() => _LegalScreenState(); }
 class _LegalScreenState extends State<LegalScreen> with SingleTickerProviderStateMixin {
