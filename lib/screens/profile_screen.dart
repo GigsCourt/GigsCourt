@@ -388,9 +388,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Expanded(
-                            child: Text(item['name'] ?? '', style: TextStyle(fontSize: 13, color: Theme.of(context).textTheme.bodyLarge?.color)),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(item['name'] ?? '', style: TextStyle(fontSize: 13, color: Theme.of(context).textTheme.bodyLarge?.color)),
+                                Text('₦${(item['price'] ?? 0).toInt()}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.royalBlue)),
+                              ],
+                            ),
                           ),
-                          Text('₦${(item['price'] ?? 0).toInt()}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.royalBlue)),
+                          if (!_isOwnProfile)
+                            SizedBox(
+                              height: 28,
+                              child: ElevatedButton(
+                                onPressed: () {
+                                  HapticFeedback.mediumImpact();
+                                  // TODO: Navigate to payment flow with this item
+                                  // _startPayment(item['name'], item['price'], _currentUid);
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppTheme.royalBlue,
+                                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                                  minimumSize: Size.zero,
+                                  textStyle: const TextStyle(fontSize: 11),
+                                ),
+                                child: const Text('Book'),
+                              ),
+                            ),
                         ],
                       ),
                     );
