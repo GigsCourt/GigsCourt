@@ -26,8 +26,6 @@ async function getAccessToken(): Promise<string> {
     private_key: Deno.env.get("FIREBASE_SERVICE_ACCOUNT_KEY")!,
   };
 
-  const key = serviceAccount.private_key;
-  
   const jwt = await create(
     { alg: "RS256", typ: "JWT" },
     {
@@ -37,7 +35,7 @@ async function getAccessToken(): Promise<string> {
       exp: getNumericDate(3600),
       iat: getNumericDate(0),
     },
-    key
+    serviceAccount.private_key
   );
 
   const response = await fetch("https://oauth2.googleapis.com/token", {
@@ -79,25 +77,6 @@ async function queryFirestore(collection: string): Promise<any[]> {
   });
 }
 
-async function queryFirestoreWithFilter(collection: string, field: string, operator: string, value: any): Promise<any[]> {
-  const accessToken = await getAccessToken();
-  const projectId = Deno.env.get("FIREBASE_PROJECT_ID")!;
-  
-  const allDocs = await queryFirestore(collection);
-  
-  // Simple client-side filtering since Firestore REST API structured queries are complex
-  return allDocs.filter((doc) => {
-    const fieldValue = doc[field];
-    switch (operator) {
-      case "==": return fieldValue == value;
-      case "!=": return fieldValue != value;
-      case ">": return fieldValue > value;
-      case "<": return fieldValue < value;
-      default: return false;
-    }
-  });
-}
-
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -107,43 +86,18 @@ serve(async (req) => {
     const { type } = await req.json();
     const now = new Date();
     const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
-    const threeHoursAgo = new Date(now.getTime() - 3 * 60 * 60 * 1000);
-    const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000);
 
     let sent = 0;
 
     switch (type) {
       case "review_reminder": {
-        // Find pending gigs where client hasn't submitted a review
         const gigs = await queryFirestore("gigs");
         for (const gig of gigs) {
-          if (gig.status === "pending" && gig.clientId) {
+          if (gig.status === "in_progress" && gig.clientId) {
             const provider = await getProfile(gig.providerId);
             const providerName = provider?.name || "your provider";
-            await callSendPush(gig.clientId, "Rate your gig", `Rate ${providerName}'s work to help them build their reputation.`, { screen: "gig", gigId: gig.id });
+            await callSendPush(gig.clientId, "Confirm & Rate", `Please confirm completion and rate ${providerName}'s work.`, { screen: "chat", gigId: gig.id });
             sent++;
-          }
-        }
-        break;
-      }
-
-      case "register_gig_reminder": {
-        // Find chats with recent messages but no active gig
-        const chats = await queryFirestore("chats");
-        for (const chat of chats) {
-          if (!chat.gigId && chat.lastMessageTime) {
-            const lastTime = new Date(chat.lastMessageTime);
-            if (lastTime > sixHoursAgo) {
-              const participants = chat.participants || [];
-              for (const uid of participants) {
-                if (uid) {
-                  const otherPerson = await getProfile(participants.find((p: string) => p !== uid));
-                  const otherName = otherPerson?.name || "this person";
-                  await callSendPush(uid, "Register a gig?", `Offering services to ${otherName}? Register a gig to get rated and reviewed.`, { screen: "chat", chatId: chat.id });
-                  sent++;
-                }
-              }
-            }
           }
         }
         break;
@@ -164,23 +118,10 @@ serve(async (req) => {
       case "provider_inactive_7d": {
         const profiles = await queryFirestore("profiles");
         for (const profile of profiles) {
-          const services = profile.services || [];
+          const serviceCategories = profile.serviceCategories || [];
           const gigCount7Days = parseInt(profile.gigCount7Days || "0");
-          if (services.length > 0 && gigCount7Days === 0) {
+          if (serviceCategories.length > 0 && gigCount7Days === 0) {
             await callSendPush(profile.id, "No gigs this week", "You haven't completed a gig this week. Update your services to attract more clients.", { screen: "edit_services" });
-            sent++;
-          }
-        }
-        break;
-      }
-
-      case "low_credits": {
-        const profiles = await queryFirestore("profiles");
-        for (const profile of profiles) {
-          const services = profile.services || [];
-          const credits = parseInt(profile.credits || "0");
-          if (services.length > 0 && credits <= 1) {
-            await callSendPush(profile.id, "Low credits", `You have ${credits} credit${credits === 1 ? "" : "s"} left. Buy more credits to register gigs and get reviewed.`, { screen: "credits" });
             sent++;
           }
         }
@@ -193,7 +134,7 @@ serve(async (req) => {
           const lastGigAt = profile.lastGigCompletedAt ? new Date(profile.lastGigCompletedAt) : null;
           const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
           if (lastGigAt && lastGigAt > yesterday) {
-            await callSendPush(profile.id, "Keep it up!", "Great work! You completed a gig today, keep it up to get more clients. This will boost your reputation.", { screen: "profile" });
+            await callSendPush(profile.id, "Keep it up!", "Great work! You completed a gig today, keep it up to get more clients.", { screen: "profile" });
             sent++;
           }
         }
@@ -226,7 +167,6 @@ serve(async (req) => {
   }
 });
 
-// Helper: get a single profile by ID
 async function getProfile(userId: string): Promise<any | null> {
   if (!userId) return null;
   const accessToken = await getAccessToken();
