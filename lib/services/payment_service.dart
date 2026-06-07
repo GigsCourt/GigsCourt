@@ -38,9 +38,7 @@ class PaymentService {
         }),
       ).timeout(const Duration(seconds: 15));
 
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      }
+      if (response.statusCode == 200) return jsonDecode(response.body);
       return null;
     } catch (e) {
       return null;
@@ -55,7 +53,6 @@ class PaymentService {
     required String reference,
   }) async {
     try {
-      // Get client name for notification
       final clientDoc = await _firestore.collection('profiles').doc(clientId).get();
       final clientName = clientDoc.data()?['name'] ?? 'A client';
 
@@ -91,9 +88,7 @@ class PaymentService {
         'readBy': [clientId],
       }, SetOptions(merge: true));
 
-      // Notify provider
       _pushService.sendNewBooking(providerId, clientName, itemName, price, chatId);
-
       return gigRef.id;
     } catch (e) {
       return null;
@@ -121,21 +116,11 @@ class PaymentService {
     for (final chatDoc in chats.docs) {
       chatId = chatDoc.id;
       final messages = await _firestore.collection('chats').doc(chatDoc.id)
-          .collection('messages')
-          .where('gigId', isEqualTo: gigId)
-          .where('type', isEqualTo: 'payment')
-          .get();
-      for (final msgDoc in messages.docs) {
-        batch.update(msgDoc.reference, {'status': 'in_progress'});
-      }
+          .collection('messages').where('gigId', isEqualTo: gigId).where('type', isEqualTo: 'payment').get();
+      for (final msgDoc in messages.docs) { batch.update(msgDoc.reference, {'status': 'in_progress'}); }
     }
-
     await batch.commit();
-
-    // Notify client
-    if (chatId != null) {
-      _pushService.sendBookingAccepted(clientId, providerName, itemName, chatId);
-    }
+    if (chatId != null) _pushService.sendBookingAccepted(clientId, providerName, itemName, chatId);
   }
 
   Future<void> declineGig(String gigId) async {
@@ -150,25 +135,16 @@ class PaymentService {
 
     final batch = _firestore.batch();
     batch.update(_firestore.collection('gigs').doc(gigId), {
-      'status': 'declined',
-      'declinedAt': FieldValue.serverTimestamp(),
+      'status': 'declined', 'declinedAt': FieldValue.serverTimestamp(),
     });
 
     final chats = await _firestore.collection('chats').where('gigId', isEqualTo: gigId).get();
     for (final chatDoc in chats.docs) {
       final messages = await _firestore.collection('chats').doc(chatDoc.id)
-          .collection('messages')
-          .where('gigId', isEqualTo: gigId)
-          .where('type', isEqualTo: 'payment')
-          .get();
-      for (final msgDoc in messages.docs) {
-        batch.update(msgDoc.reference, {'status': 'declined'});
-      }
+          .collection('messages').where('gigId', isEqualTo: gigId).where('type', isEqualTo: 'payment').get();
+      for (final msgDoc in messages.docs) { batch.update(msgDoc.reference, {'status': 'declined'}); }
     }
-
     await batch.commit();
-
-    // Notify client
     _pushService.sendBookingDeclined(clientId, providerName, itemName);
   }
 
@@ -181,22 +157,19 @@ class PaymentService {
     final clientId = gig['clientId'] as String;
     final price = (gig['price'] ?? 0).toInt();
     final itemName = gig['service'] ?? 'service';
-    final commission = (price * 0.1).round();
+    final commission = (price * 0.12).round().clamp(0, 2000);
     final providerAmount = price - commission;
 
     final batch = _firestore.batch();
 
     batch.update(_firestore.collection('gigs').doc(gigId), {
-      'status': 'completed',
-      'completedAt': FieldValue.serverTimestamp(),
-      'rating': rating,
-      'review': review ?? '',
+      'status': 'completed', 'completedAt': FieldValue.serverTimestamp(),
+      'rating': rating, 'review': review ?? '',
+      'commission': commission, 'providerPayout': providerAmount,
     });
 
     final existingReviews = await _firestore.collection('reviews')
-        .where('providerId', isEqualTo: providerId)
-        .where('clientId', isEqualTo: clientId)
-        .get();
+        .where('providerId', isEqualTo: providerId).where('clientId', isEqualTo: clientId).get();
 
     if (existingReviews.docs.isNotEmpty) {
       batch.update(existingReviews.docs.first.reference, {
@@ -227,40 +200,25 @@ class PaymentService {
       }
 
       batch.update(_firestore.collection('profiles').doc(providerId), {
-        'rating': newAvgRating,
-        'reviewCount': newReviewCount,
-        'gigCount': FieldValue.increment(1),
-        'gigCount7Days': FieldValue.increment(1),
-        'gigCount30Days': FieldValue.increment(1),
-        'lastGigCompletedAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
+        'rating': newAvgRating, 'reviewCount': newReviewCount,
+        'gigCount': FieldValue.increment(1), 'gigCount7Days': FieldValue.increment(1), 'gigCount30Days': FieldValue.increment(1),
+        'lastGigCompletedAt': FieldValue.serverTimestamp(), 'updatedAt': FieldValue.serverTimestamp(),
       });
     }
 
     final chats = await _firestore.collection('chats').where('gigId', isEqualTo: gigId).get();
     for (final chatDoc in chats.docs) {
       final messages = await _firestore.collection('chats').doc(chatDoc.id)
-          .collection('messages')
-          .where('gigId', isEqualTo: gigId)
-          .where('type', isEqualTo: 'payment')
-          .get();
+          .collection('messages').where('gigId', isEqualTo: gigId).where('type', isEqualTo: 'payment').get();
       for (final msgDoc in messages.docs) {
-        batch.update(msgDoc.reference, {
-          'status': 'completed', 'rating': rating, 'review': review ?? '',
-        });
+        batch.update(msgDoc.reference, {'status': 'completed', 'rating': rating, 'review': review ?? ''});
       }
     }
-
     await batch.commit();
 
-    // Get client name for notification
     final clientDoc = await _firestore.collection('profiles').doc(clientId).get();
     final clientName = clientDoc.data()?['name'] ?? 'A client';
-
-    // Notify provider of payment
     _pushService.sendPaymentReceived(providerId, itemName, providerAmount);
-
-    // Notify provider of review
     _pushService.sendReviewSubmitted(providerId, clientName, rating, providerId);
   }
 }
