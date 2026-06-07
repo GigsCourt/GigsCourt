@@ -9,8 +9,10 @@ import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/auth_service.dart';
 import '../services/image_service.dart';
+import '../services/payment_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/profile_sheets.dart';
+import 'payment_webview_screen.dart';
 import 'settings_screen.dart';
 import '../utils/error_handler.dart';
 
@@ -31,6 +33,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final ImagePicker _picker = ImagePicker();
   final ImageService _imageService = ImageService();
+  final PaymentService _paymentService = PaymentService();
 
   Map<String, dynamic>? _profileData;
   bool _isLoading = true;
@@ -87,6 +90,86 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (mounted) {
         setState(() => _isLoading = false);
         showError(context, e);
+      }
+    }
+  }
+
+  Future<void> _startPayment(String itemName, int price, String providerId) async {
+    final providerName = _profileData?['name'] ?? 'Provider';
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirm Booking'),
+        content: Text('Book "$itemName" from $providerName for ₦$price?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Confirm')),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Payment'),
+        content: const Text('Please do not close the payment page while your transaction is being processed.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Continue')),
+        ],
+      ),
+    );
+
+    if (proceed != true) return;
+
+    HapticFeedback.mediumImpact();
+    final result = await _paymentService.initializeGigPayment(
+      providerId: providerId,
+      providerName: providerName,
+      itemName: itemName,
+      price: price,
+    );
+
+    if (result == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to initialize payment. Please try again.')),
+        );
+      }
+      return;
+    }
+
+    final authorizationUrl = result['authorizationUrl'] as String;
+    final reference = result['reference'] as String;
+
+    if (mounted) {
+      final paymentResult = await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => PaymentWebViewScreen(
+            authorizationUrl: authorizationUrl,
+            reference: reference,
+            callbackUrl: 'https://gigscourt.com/payment/callback',
+          ),
+        ),
+      );
+
+      if (paymentResult != null && paymentResult is Map && paymentResult['status'] == 'success') {
+        await _paymentService.createGigAfterPayment(
+          providerId: providerId,
+          clientId: _authService.currentUser?.uid ?? '',
+          itemName: itemName,
+          price: price,
+          reference: reference,
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Payment successful! The provider will be notified.')),
+          );
+        }
       }
     }
   }
@@ -231,18 +314,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildStat(
-                value: gigCount.toString(),
-                icon: Icons.work_outline,
-                label: 'Gigs',
-                onTap: _isOwnProfile ? () => ProfileSheets.gigHistory(context, _currentUid) : null,
-              ),
-              _buildStat(
-                value: rating.toStringAsFixed(1),
-                icon: Icons.star_outline,
-                label: 'Rating',
-                onTap: () => ProfileSheets.reviews(context, _currentUid),
-              ),
+              _buildStat(value: gigCount.toString(), icon: Icons.work_outline, label: 'Gigs', onTap: _isOwnProfile ? () => ProfileSheets.gigHistory(context, _currentUid) : null),
+              _buildStat(value: rating.toStringAsFixed(1), icon: Icons.star_outline, label: 'Rating', onTap: () => ProfileSheets.reviews(context, _currentUid)),
             ],
           ),
         ),
@@ -250,29 +323,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildStat({
-    required String value,
-    required IconData icon,
-    required String label,
-    VoidCallback? onTap,
-  }) {
+  Widget _buildStat({required String value, required IconData icon, required String label, VoidCallback? onTap}) {
     final isTappable = onTap != null;
     return GestureDetector(
-      onTap: () {
-        if (onTap != null) {
-          HapticFeedback.lightImpact();
-          onTap();
-        }
-      },
+      onTap: () { if (onTap != null) { HapticFeedback.lightImpact(); onTap(); } },
       child: Column(
         children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Theme.of(context).textTheme.bodyLarge?.color)),
-              if (isTappable) const Icon(Icons.chevron_right, size: 14, color: Color(0xFF6B7280)),
-            ],
-          ),
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Theme.of(context).textTheme.bodyLarge?.color)),
+            if (isTappable) const Icon(Icons.chevron_right, size: 14, color: Color(0xFF6B7280)),
+          ]),
           const SizedBox(height: 4),
           Icon(icon, size: 16, color: const Color(0xFF6B7280)),
           const SizedBox(height: 2),
@@ -293,69 +353,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            if (gigCount7Days >= 1)
-              Container(
-                width: 6, height: 6,
-                margin: const EdgeInsets.only(right: 8),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: const Color(0xFF4CAF50),
-                  boxShadow: [BoxShadow(color: const Color(0xFF4CAF50).withAlpha(77), blurRadius: 4, spreadRadius: 1)],
-                ),
-              ),
-            Flexible(
-              child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Theme.of(context).textTheme.bodyLarge?.color)),
-            ),
-          ],
-        ),
-        if (bio.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Text(bio, style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280))),
-        ],
+        Row(children: [
+          if (gigCount7Days >= 1) Container(width: 6, height: 6, margin: const EdgeInsets.only(right: 8), decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFF4CAF50), boxShadow: [BoxShadow(color: const Color(0xFF4CAF50).withAlpha(77), blurRadius: 4, spreadRadius: 1)])),
+          Flexible(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Theme.of(context).textTheme.bodyLarge?.color))),
+        ]),
+        if (bio.isNotEmpty) ...[const SizedBox(height: 8), Text(bio, style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280)))],
         const SizedBox(height: 8),
         Text('$gigCount30Days gigs this month', style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280))),
-        if (address.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              const Icon(Icons.location_on_outlined, size: 14, color: Color(0xFF6B7280)),
-              const SizedBox(width: 4),
-              Flexible(child: Text(address, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280)))),
-            ],
-          ),
-        ],
-        if (createdAt != null) ...[
-          const SizedBox(height: 8),
-          Text('Joined ${DateFormat('dd/MM/yyyy').format(createdAt.toDate())}', style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
-        ],
+        if (address.isNotEmpty) ...[const SizedBox(height: 8), Row(children: [const Icon(Icons.location_on_outlined, size: 14, color: Color(0xFF6B7280)), const SizedBox(width: 4), Flexible(child: Text(address, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280))))])],
+        if (createdAt != null) ...[const SizedBox(height: 8), Text('Joined ${DateFormat('dd/MM/yyyy').format(createdAt.toDate())}', style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)))],
       ],
     );
   }
 
   Widget _buildServicesSection() {
     final serviceCategories = List<Map<String, dynamic>>.from(_profileData?['serviceCategories'] ?? []);
-
     if (serviceCategories.isEmpty) return const SizedBox.shrink();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         GestureDetector(
-          onTap: _isOwnProfile
-              ? () => ProfileSheets.editServices(context, _currentUid, serviceCategories)
-              : null,
-          child: Row(
-            children: [
-              Text('Services', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Theme.of(context).textTheme.bodyLarge?.color)),
-              if (_isOwnProfile) ...[
-                const SizedBox(width: 4),
-                Icon(Icons.edit, size: 14, color: AppTheme.royalBlue),
-              ],
-            ],
-          ),
+          onTap: _isOwnProfile ? () => ProfileSheets.editServices(context, _currentUid, serviceCategories) : null,
+          child: Row(children: [
+            Text('Services', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Theme.of(context).textTheme.bodyLarge?.color)),
+            if (_isOwnProfile) ...[const SizedBox(width: 4), Icon(Icons.edit, size: 14, color: AppTheme.royalBlue)],
+          ]),
         ),
         const SizedBox(height: 8),
         ...serviceCategories.map((cat) {
@@ -363,63 +386,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
           final categoryName = cat['name'] ?? '';
           return Padding(
             padding: const EdgeInsets.only(bottom: 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppTheme.royalBlue.withAlpha(26),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(categoryName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.royalBlue)),
-                ),
-                const SizedBox(height: 6),
-                if (items.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(left: 8),
-                    child: Text('No items added yet', style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
-                  )
-                else
-                  ...items.map((item) {
-                    return Padding(
-                      padding: const EdgeInsets.only(left: 8, bottom: 4),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(item['name'] ?? '', style: TextStyle(fontSize: 13, color: Theme.of(context).textTheme.bodyLarge?.color)),
-                                Text('₦${(item['price'] ?? 0).toInt()}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.royalBlue)),
-                              ],
-                            ),
-                          ),
-                          if (!_isOwnProfile)
-                            SizedBox(
-                              height: 28,
-                              child: ElevatedButton(
-                                onPressed: () {
-                                  HapticFeedback.mediumImpact();
-                                  // TODO: Navigate to payment flow with this item
-                                  // _startPayment(item['name'], item['price'], _currentUid);
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppTheme.royalBlue,
-                                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                                  minimumSize: Size.zero,
-                                  textStyle: const TextStyle(fontSize: 11),
-                                ),
-                                child: const Text('Book'),
-                              ),
-                            ),
-                        ],
-                      ),
-                    );
-                  }),
-              ],
-            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: AppTheme.royalBlue.withAlpha(26), borderRadius: BorderRadius.circular(12)), child: Text(categoryName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.royalBlue))),
+              const SizedBox(height: 6),
+              if (items.isEmpty)
+                const Padding(padding: EdgeInsets.only(left: 8), child: Text('No items added yet', style: TextStyle(fontSize: 12, color: Color(0xFF6B7280))))
+              else
+                ...items.map((item) {
+                  return Padding(
+                    padding: const EdgeInsets.only(left: 8, bottom: 4),
+                    child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(item['name'] ?? '', style: TextStyle(fontSize: 13, color: Theme.of(context).textTheme.bodyLarge?.color)),
+                        Text('₦${(item['price'] ?? 0).toInt()}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.royalBlue)),
+                      ])),
+                      if (!_isOwnProfile)
+                        SizedBox(height: 28, child: ElevatedButton(
+                          onPressed: () { HapticFeedback.mediumImpact(); _startPayment(item['name'] ?? '', (item['price'] ?? 0).toInt(), _currentUid); },
+                          style: ElevatedButton.styleFrom(backgroundColor: AppTheme.royalBlue, padding: const EdgeInsets.symmetric(horizontal: 10), minimumSize: Size.zero, textStyle: const TextStyle(fontSize: 11)),
+                          child: const Text('Book'),
+                        )),
+                    ]),
+                  );
+                }),
+            ]),
           );
         }),
       ],
@@ -428,115 +418,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildActionButtons() {
     if (_isOwnProfile) {
-      return SizedBox(
-        width: double.infinity,
-        child: ElevatedButton(
-          onPressed: () {
-            HapticFeedback.mediumImpact();
-            ProfileSheets.editProfile(context, _currentUid, _profileData!);
-          },
-          child: const Text('Edit Profile'),
-        ),
-      );
+      return SizedBox(width: double.infinity, child: ElevatedButton(onPressed: () { HapticFeedback.mediumImpact(); ProfileSheets.editProfile(context, _currentUid, _profileData!); }, child: const Text('Edit Profile')));
     } else {
-      return Row(
-        children: [
-          Expanded(
-            child: ElevatedButton(
-              onPressed: () {
-                HapticFeedback.mediumImpact();
-                Navigator.of(context, rootNavigator: true).pushNamed('/chat', arguments: _currentUid);
-              },
-              child: const Text('Message'),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: OutlinedButton(
-              onPressed: () {
-                HapticFeedback.lightImpact();
-                final showPhone = _profileData?['showPhone'] ?? false;
-                final phone = _profileData?['phone'] ?? '';
-                if (showPhone && phone.isNotEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Phone: $phone')));
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Phone number is private')));
-                }
-              },
-              child: const Text('Contact Now'),
-            ),
-          ),
-        ],
-      );
+      return Row(children: [
+        Expanded(child: ElevatedButton(onPressed: () { HapticFeedback.mediumImpact(); Navigator.of(context, rootNavigator: true).pushNamed('/chat', arguments: _currentUid); }, child: const Text('Message'))),
+        const SizedBox(width: 12),
+        Expanded(child: OutlinedButton(onPressed: () { HapticFeedback.lightImpact(); final showPhone = _profileData?['showPhone'] ?? false; final phone = _profileData?['phone'] ?? ''; if (showPhone && phone.isNotEmpty) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Phone: $phone'))); } else { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Phone number is private'))); } }, child: const Text('Contact Now'))),
+      ]);
     }
   }
 
   Widget _buildWorkPhotos() {
     final workPhotos = List<Map<String, dynamic>>.from((_profileData?['workPhotos'] as List<dynamic>?) ?? []);
     final displayPhotos = workPhotos.reversed.toList();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (_isOwnProfile)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: SizedBox(
-              height: 32,
-              child: OutlinedButton.icon(
-                onPressed: _isUploadingPhotos ? null : () => _addWorkPhotos(workPhotos),
-                icon: const Icon(Icons.add, size: 14),
-                label: const Text('Add Photos', style: TextStyle(fontSize: 12)),
-                style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), minimumSize: Size.zero),
-              ),
-            ),
-          ),
-        const SizedBox(height: 8),
-        if (workPhotos.isEmpty)
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: BorderRadius.circular(12)),
-            child: Center(
-              child: Text(
-                _isOwnProfile ? 'Add photos so clients can see your work.\nThis helps them trust you.' : 'No work photos yet.',
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280), height: 1.5),
-              ),
-            ),
-          )
-        else
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 2, mainAxisSpacing: 2),
-              itemCount: displayPhotos.length,
-              itemBuilder: (context, index) => _buildWorkPhoto(displayPhotos[index], index, workPhotos),
-            ),
-          ),
-      ],
-    );
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      if (_isOwnProfile) Align(alignment: Alignment.centerLeft, child: SizedBox(height: 32, child: OutlinedButton.icon(onPressed: _isUploadingPhotos ? null : () => _addWorkPhotos(workPhotos), icon: const Icon(Icons.add, size: 14), label: const Text('Add Photos', style: TextStyle(fontSize: 12)), style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), minimumSize: Size.zero)))),
+      const SizedBox(height: 8),
+      if (workPhotos.isEmpty) Container(padding: const EdgeInsets.all(24), decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: BorderRadius.circular(12)), child: Center(child: Text(_isOwnProfile ? 'Add photos so clients can see your work.\nThis helps them trust you.' : 'No work photos yet.', textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280), height: 1.5))))
+      else ClipRRect(borderRadius: BorderRadius.circular(12), child: GridView.builder(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 2, mainAxisSpacing: 2), itemCount: displayPhotos.length, itemBuilder: (context, index) => _buildWorkPhoto(displayPhotos[index], index, workPhotos))),
+    ]);
   }
 
   Widget _buildWorkPhoto(Map<String, dynamic> photo, int index, List<Map<String, dynamic>> allPhotos) {
-    return GestureDetector(
-      onTap: () => _viewWorkPhoto(photo),
-      onLongPress: _isOwnProfile ? () => _deleteWorkPhoto(photo, allPhotos) : null,
-      child: CachedNetworkImage(
-        imageUrl: photo['url'] ?? '',
-        fit: BoxFit.cover,
-        placeholder: (_, __) => Container(color: Theme.of(context).cardColor),
-        errorWidget: (_, __, ___) => Container(color: Theme.of(context).cardColor, child: Icon(Icons.broken_image, color: Theme.of(context).textTheme.bodySmall?.color)),
-      ),
-    );
+    return GestureDetector(onTap: () => _viewWorkPhoto(photo), onLongPress: _isOwnProfile ? () => _deleteWorkPhoto(photo, allPhotos) : null, child: CachedNetworkImage(imageUrl: photo['url'] ?? '', fit: BoxFit.cover, placeholder: (_, __) => Container(color: Theme.of(context).cardColor), errorWidget: (_, __, ___) => Container(color: Theme.of(context).cardColor, child: Icon(Icons.broken_image, color: Theme.of(context).textTheme.bodySmall?.color))));
   }
 
   Future<void> _addWorkPhotos(List<Map<String, dynamic>> existingPhotos) async {
-    if (existingPhotos.length >= 15) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('You can add up to 15 photos.')));
-      return;
-    }
+    if (existingPhotos.length >= 15) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('You can add up to 15 photos.'))); return; }
     final remaining = 15 - existingPhotos.length;
     final pickedFiles = await _picker.pickMultiImage(imageQuality: 85, limit: remaining);
     if (pickedFiles == null || pickedFiles.isEmpty) return;
@@ -544,94 +452,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() => _isUploadingPhotos = true);
     try {
       final newPhotos = List<Map<String, dynamic>>.from(existingPhotos);
-      for (int i = 0; i < pickedFiles.length; i++) {
-        final file = File(pickedFiles[i].path);
-        final result = await _imageService.uploadToImageKit(file, _currentUid, folder: '/work_photos/$_currentUid');
-        newPhotos.add({'url': result.url, 'fileId': result.fileId});
-      }
+      for (int i = 0; i < pickedFiles.length; i++) { final file = File(pickedFiles[i].path); final result = await _imageService.uploadToImageKit(file, _currentUid, folder: '/work_photos/$_currentUid'); newPhotos.add({'url': result.url, 'fileId': result.fileId}); }
       await _firestore.collection('profiles').doc(_currentUid).update({'workPhotos': newPhotos, 'updatedAt': FieldValue.serverTimestamp()});
       HapticFeedback.heavyImpact();
-    } catch (e) {
-      HapticFeedback.vibrate();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
-    } finally {
-      if (mounted) setState(() => _isUploadingPhotos = false);
-    }
+    } catch (e) { HapticFeedback.vibrate(); if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e'))); }
+    finally { if (mounted) setState(() => _isUploadingPhotos = false); }
   }
 
   void _deleteWorkPhoto(Map<String, dynamic> photo, List<Map<String, dynamic>> allPhotos) {
     HapticFeedback.vibrate();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete Photo'),
-        content: const Text('Remove this photo from your work gallery?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(ctx);
-              HapticFeedback.mediumImpact();
-              try {
-                final updatedPhotos = List<Map<String, dynamic>>.from(allPhotos);
-                updatedPhotos.removeWhere((p) => p['fileId'] == photo['fileId']);
-                await _firestore.collection('profiles').doc(_currentUid).update({'workPhotos': updatedPhotos, 'updatedAt': FieldValue.serverTimestamp()});
-                HapticFeedback.heavyImpact();
-              } catch (e) {
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Delete failed: $e')));
-              }
-            },
-            child: const Text('Delete', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
-    );
+    showDialog(context: context, builder: (ctx) => AlertDialog(title: const Text('Delete Photo'), content: const Text('Remove this photo from your work gallery?'), actions: [
+      TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+      TextButton(onPressed: () async { Navigator.pop(ctx); HapticFeedback.mediumImpact(); try { final updatedPhotos = List<Map<String, dynamic>>.from(allPhotos); updatedPhotos.removeWhere((p) => p['fileId'] == photo['fileId']); await _firestore.collection('profiles').doc(_currentUid).update({'workPhotos': updatedPhotos, 'updatedAt': FieldValue.serverTimestamp()}); HapticFeedback.heavyImpact(); } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Delete failed: $e'))); } }, child: const Text('Delete', style: TextStyle(color: Colors.red))),
+    ]));
   }
 
   void _viewWorkPhoto(Map<String, dynamic> photo) {
     HapticFeedback.lightImpact();
-    Navigator.of(context, rootNavigator: true).push(
-      MaterialPageRoute(
-        builder: (_) => Scaffold(
-          backgroundColor: Colors.black,
-          appBar: AppBar(backgroundColor: Colors.black, iconTheme: const IconThemeData(color: Colors.white)),
-          body: Center(child: CachedNetworkImage(imageUrl: photo['url'] ?? '', fit: BoxFit.contain)),
-        ),
-      ),
-    );
+    Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => Scaffold(backgroundColor: Colors.black, appBar: AppBar(backgroundColor: Colors.black, iconTheme: const IconThemeData(color: Colors.white)), body: Center(child: CachedNetworkImage(imageUrl: photo['url'] ?? '', fit: BoxFit.contain)))));
   }
 
   Widget _buildShimmer() {
-    return Shimmer.fromColors(
-      baseColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade300,
-      highlightColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade700 : Colors.grey.shade100,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Row(children: [Container(width: 72, height: 72, decoration: BoxDecoration(color: Colors.grey.shade400, shape: BoxShape.circle)), const SizedBox(width: 24), Expanded(child: Container(height: 14, color: Colors.grey.shade400))]),
-          const SizedBox(height: 24),
-          Container(height: 14, width: 200, color: Colors.grey.shade400),
-          const SizedBox(height: 8),
-          Container(height: 14, color: Colors.grey.shade400),
-          const SizedBox(height: 8),
-          Container(height: 100, color: Colors.grey.shade400),
-        ],
-      ),
-    );
+    return Shimmer.fromColors(baseColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade300, highlightColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade700 : Colors.grey.shade100, child: ListView(padding: const EdgeInsets.all(16), children: [
+      Row(children: [Container(width: 72, height: 72, decoration: BoxDecoration(color: Colors.grey.shade400, shape: BoxShape.circle)), const SizedBox(width: 24), Expanded(child: Container(height: 14, color: Colors.grey.shade400))]),
+      const SizedBox(height: 24), Container(height: 14, width: 200, color: Colors.grey.shade400), const SizedBox(height: 8), Container(height: 14, color: Colors.grey.shade400), const SizedBox(height: 8), Container(height: 100, color: Colors.grey.shade400),
+    ]));
   }
 
   Widget _buildError() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.error_outline, size: 48, color: Theme.of(context).textTheme.bodySmall?.color),
-          const SizedBox(height: 16),
-          Text(_error ?? 'Something went wrong', style: TextStyle(color: Theme.of(context).textTheme.bodySmall?.color)),
-          const SizedBox(height: 16),
-          ElevatedButton(onPressed: _loadProfile, child: const Text('Retry')),
-        ],
-      ),
-    );
+    return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+      Icon(Icons.error_outline, size: 48, color: Theme.of(context).textTheme.bodySmall?.color), const SizedBox(height: 16),
+      Text(_error ?? 'Something went wrong', style: TextStyle(color: Theme.of(context).textTheme.bodySmall?.color)), const SizedBox(height: 16),
+      ElevatedButton(onPressed: _loadProfile, child: const Text('Retry')),
+    ]));
   }
 }
